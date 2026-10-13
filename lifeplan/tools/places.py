@@ -26,83 +26,88 @@ CATEGORIES: dict[str, dict] = {
     "food": {
         "geoapify": ["catering.restaurant"],
         "osm": [("amenity", "restaurant")],
-        "duration": 75, "cost_inr": 600, "indoor": True, "kind": "meal",
+        "duration": 75, "cost_inr": 600, "indoor": True, "kind": "meal", "default_hours": "Mo-Su 11:00-23:00",
     },
     "cafe": {
         "geoapify": ["catering.cafe"],
         "osm": [("amenity", "cafe")],
-        "duration": 45, "cost_inr": 300, "indoor": True, "kind": "snack",
+        "duration": 45, "cost_inr": 300, "indoor": True, "kind": "snack", "default_hours": "Mo-Su 08:00-23:00",
     },
     "street_food": {
         "geoapify": ["catering.fast_food", "catering.food_court"],
         "osm": [("amenity", "fast_food"), ("amenity", "food_court")],
-        "duration": 40, "cost_inr": 200, "indoor": False, "kind": "snack",
+        "duration": 40, "cost_inr": 200, "indoor": False, "kind": "snack", "default_hours": "Mo-Su 10:00-23:00",
     },
     "nightlife": {
         "geoapify": ["catering.bar", "catering.pub", "adult.nightclub"],
         "osm": [("amenity", "bar"), ("amenity", "pub"), ("amenity", "nightclub"), ("amenity", "music_venue")],
-        "duration": 90, "cost_inr": 1200, "indoor": True, "kind": "activity",
+        "duration": 90, "cost_inr": 1200, "indoor": True, "kind": "activity", "default_hours": "Mo-Su 18:00-01:00",
     },
     "museum": {
         "geoapify": ["entertainment.museum"],
         "osm": [("tourism", "museum")],
-        "duration": 90, "cost_inr": 100, "indoor": True, "kind": "activity",
+        "duration": 90, "cost_inr": 100, "indoor": True, "kind": "activity", "default_hours": "Tu-Su 10:00-18:00",
     },
     "culture": {
         "geoapify": ["entertainment.culture", "tourism.sights", "building.historic"],
         "osm": [("amenity", "theatre"), ("amenity", "arts_centre"), ("historic", "monument"), ("historic", "fort")],
-        "duration": 75, "cost_inr": 150, "indoor": False, "kind": "activity",
+        "duration": 75, "cost_inr": 150, "indoor": False, "kind": "activity", "default_hours": "Mo-Su 09:00-19:00",
     },
     "attractions": {
         "geoapify": ["tourism.attraction", "tourism.sights"],
         "osm": [("tourism", "attraction"), ("tourism", "viewpoint")],
-        "duration": 60, "cost_inr": 100, "indoor": False, "kind": "activity",
+        "duration": 60, "cost_inr": 100, "indoor": False, "kind": "activity", "default_hours": "Mo-Su 08:00-19:00",
     },
     "nature": {
         "geoapify": ["leisure.park", "natural"],
         "osm": [("leisure", "park"), ("leisure", "garden"), ("natural", "peak")],
-        "duration": 60, "cost_inr": 0, "indoor": False, "kind": "activity",
+        "duration": 60, "cost_inr": 0, "indoor": False, "kind": "activity", "default_hours": "Mo-Su 06:00-20:00",
     },
     "shopping": {
         "geoapify": ["commercial.shopping_mall", "commercial.marketplace"],
         "osm": [("shop", "mall"), ("amenity", "marketplace")],
-        "duration": 75, "cost_inr": 800, "indoor": True, "kind": "activity",
+        "duration": 75, "cost_inr": 800, "indoor": True, "kind": "activity", "default_hours": "Mo-Su 10:00-22:00",
     },
     "movies": {
         "geoapify": ["entertainment.cinema"],
         "osm": [("amenity", "cinema")],
-        "duration": 150, "cost_inr": 350, "indoor": True, "kind": "activity",
+        "duration": 150, "cost_inr": 350, "indoor": True, "kind": "activity", "default_hours": "Mo-Su 09:00-24:00",
     },
     "entertainment": {
         "geoapify": ["entertainment.bowling_alley", "entertainment.escape_game", "entertainment.activity_park",
                      "entertainment.amusement_arcade", "entertainment.theme_park"],
         "osm": [("leisure", "bowling_alley"), ("leisure", "escape_game"), ("leisure", "amusement_arcade")],
-        "duration": 90, "cost_inr": 700, "indoor": True, "kind": "activity",
+        "duration": 90, "cost_inr": 700, "indoor": True, "kind": "activity", "default_hours": "Mo-Su 11:00-22:00",
     },
     "sports": {
         "geoapify": ["sport.sports_centre", "sport.stadium", "sport.swimming_pool"],
         "osm": [("leisure", "sports_centre"), ("leisure", "stadium")],
-        "duration": 90, "cost_inr": 300, "indoor": True, "kind": "activity",
+        "duration": 90, "cost_inr": 300, "indoor": True, "kind": "activity", "default_hours": "Mo-Su 06:00-22:00",
     },
     "beach": {
         "geoapify": ["beach"],
         "osm": [("natural", "beach")],
-        "duration": 120, "cost_inr": 0, "indoor": False, "kind": "activity",
+        "duration": 120, "cost_inr": 0, "indoor": False, "kind": "activity", "default_hours": "Mo-Su 06:00-19:30",
+    },
+    "shows": {
+        "geoapify": ["entertainment.culture.theatre", "entertainment.culture.arts_centre"],
+        "osm": [("amenity", "theatre"), ("amenity", "arts_centre"), ("amenity", "music_venue")],
+        "duration": 120, "cost_inr": 500, "indoor": True, "kind": "activity", "default_hours": "Mo-Su 17:00-23:30",
     },
     "religious": {
         "geoapify": ["religion.place_of_worship"],
         "osm": [("amenity", "place_of_worship")],
-        "duration": 40, "cost_inr": 0, "indoor": True, "kind": "activity",
+        "duration": 40, "cost_inr": 0, "indoor": True, "kind": "activity", "default_hours": "Mo-Su 06:00-21:00",
     },
     "learning": {
         "geoapify": ["education.library", "entertainment.planetarium"],
         "osm": [("amenity", "library"), ("amenity", "planetarium")],
-        "duration": 60, "cost_inr": 50, "indoor": True, "kind": "activity",
+        "duration": 60, "cost_inr": 50, "indoor": True, "kind": "activity", "default_hours": "Mo-Sa 09:00-19:00",
     },
     "hotel": {
         "geoapify": ["accommodation.hotel", "accommodation.guest_house"],
         "osm": [("tourism", "hotel"), ("tourism", "guest_house")],
-        "duration": 0, "cost_inr": 3000, "indoor": True, "kind": "hotel",
+        "duration": 0, "cost_inr": 3000, "indoor": True, "kind": "hotel", "default_hours": "24/7",
     },
 }
 
@@ -114,7 +119,7 @@ SYNONYMS = {
     "bar": "nightlife", "pub": "nightlife", "club": "nightlife", "drinks": "nightlife", "nightlife": "nightlife",
     "live music": "nightlife", "music": "nightlife",
     "museum": "museum", "museums": "museum", "history": "culture", "heritage": "culture", "art": "culture",
-    "theatre": "culture", "culture": "culture", "monument": "culture", "fort": "culture",
+    "culture": "culture", "monument": "culture", "fort": "culture",
     "sightseeing": "attractions", "attractions": "attractions", "tourist": "attractions", "viewpoint": "attractions",
     "park": "nature", "parks": "nature", "nature": "nature", "garden": "nature", "outdoors": "nature", "trek": "nature",
     "hiking": "nature", "shopping": "shopping", "mall": "shopping", "market": "shopping",
@@ -122,7 +127,8 @@ SYNONYMS = {
     "games": "entertainment", "bowling": "entertainment", "arcade": "entertainment", "entertainment": "entertainment",
     "escape room": "entertainment", "fun": "entertainment",
     "sports": "sports", "gym": "sports", "swimming": "sports", "fitness": "sports",
-    "comedy": "culture", "stand-up": "culture", "standup": "culture", "concert": "nightlife", "gallery": "culture",
+    "comedy": "shows", "stand-up": "shows", "standup": "shows", "theatre": "shows", "theater": "shows",
+    "drama": "shows", "play": "shows", "concert": "shows", "gallery": "culture",
     "beach": "beach", "beaches": "beach", "seafood": "food", "anime": "shopping", "temples": "religious",
     "temple": "religious", "spiritual": "religious", "church": "religious",
     "library": "learning", "books": "learning", "workshop": "learning", "learning": "learning",
@@ -195,6 +201,7 @@ def _geoapify_search(lat: float, lon: float, cats: list[str], radius_m: int, lim
                 "duration_min": CATEGORIES[cat]["duration"],
                 "est_cost_inr": _estimate_cost(cat, raw),
                 "indoor": CATEGORIES[cat]["indoor"],
+                "default_hours": CATEGORIES[cat].get("default_hours"),
             })
     if errors and len(errors) == len(cats):
         raise errors[0]
@@ -250,6 +257,7 @@ def _overpass_search(lat: float, lon: float, cats: list[str], radius_m: int, lim
             "duration_min": CATEGORIES[cat]["duration"],
             "est_cost_inr": _estimate_cost(cat, tags),
             "indoor": CATEGORIES[cat]["indoor"],
+            "default_hours": CATEGORIES[cat].get("default_hours"),
         })
     return out
 

@@ -130,9 +130,16 @@ def check_venues(plan: dict, registry: dict[str, dict], wet_hours: set[str]) -> 
                                "message": f"'{it['title']}' is closed at {it['start'][11:]}–{it['end'][11:]} "
                                           f"(hours: {cand.get('opening_hours')})"})
             elif open_ok is None and cand.get("kind") != "event":
-                issues.append({"type": "HOURS_UNKNOWN", "severity": LOW, "agent": "discovery", "day": day,
-                               "item_index": idx,
-                               "message": f"Opening hours for '{it['title']}' are not published; verify before going"})
+                typical = opening_hours.is_open_between(cand.get("default_hours"), s, e)
+                if typical is False:
+                    issues.append({"type": "LIKELY_CLOSED", "severity": MEDIUM, "agent": "discovery", "day": day,
+                                   "item_index": idx,
+                                   "message": f"'{it['title']}' publishes no hours and {it['start'][11:]} is outside typical "
+                                              f"hours for a {cand.get('category')} ({cand.get('default_hours')})"})
+                else:
+                    issues.append({"type": "HOURS_UNKNOWN", "severity": LOW, "agent": "discovery", "day": day,
+                                   "item_index": idx,
+                                   "message": f"Opening hours for '{it['title']}' are not published; verify before going"})
         if not cand.get("indoor", True):
             hrs = set()
             t = s.replace(minute=0)

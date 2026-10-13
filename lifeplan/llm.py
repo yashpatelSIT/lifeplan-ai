@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import os
+import re
 import threading
 import time
 from typing import Any, Callable, Optional, Sequence
@@ -17,7 +18,7 @@ from typing import Any, Callable, Optional, Sequence
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 
-from lifeplan.config import get_settings, redact
+from lifeplan.config import DEFAULT_AGENT_MODELS, get_settings, redact
 from lifeplan.trace import Trace
 
 
@@ -66,7 +67,7 @@ def _build_model(spec: str) -> BaseChatModel:
 
         if not s.google_api_key:
             raise LLMUnavailable("GOOGLE_API_KEY not configured")
-        return ChatGoogleGenerativeAI(model=model, api_key=s.google_api_key, max_retries=1, timeout=90)
+        return ChatGoogleGenerativeAI(model=model, api_key=s.google_api_key, max_retries=1, timeout=45)
     if provider == "groq":
         from langchain_groq import ChatGroq
 
@@ -111,12 +112,55 @@ def get_model(spec: str) -> BaseChatModel:
 
 
 def model_chain(agent: str) -> list[str]:
+    """Primary model for the agent, then the *same agent's* default model on every other configured
+    provider (so a light agent falls back to a light model and spreads load across rate-limit buckets),
+    unless LLM_FALLBACKS overrides the chain explicitly."""
     s = get_settings()
     chain = [s.model_for(agent)]
-    for fb in s.llm_fallbacks:
+    if os.getenv("LLM_FALLBACKS", "").strip():
+        fallbacks = list(s.llm_fallbacks)
+    else:
+        primary_provider = chain[0].split(":", 1)[0]
+        fallbacks = [DEFAULT_AGENT_MODELS[p][agent] for p in s.available_providers if p != primary_provider]
+        fallbacks += list(s.llm_fallbacks)
+    for fb in fallbacks:
         if fb not in chain:
             chain.append(fb)
     return chain
+
+
+# ---------------------------------------------------------------- transient-error handling
+_TRANSIENT = ("429", "rate limit", "resource_exhausted", "503", "unavailable", "overloaded", "504",
+              "deadline", "high demand", "timeout", "timed out")
+_OVERLOAD = ("503", "unavailable", "overloaded", "high demand", "504", "deadline")
+_down_until: dict[str, float] = {}  # simple circuit breaker per model spec
+BREAKER_SECONDS = 90
+MAX_INLINE_WAIT = 20.0
+
+
+def _retry_after(err: str) -> Optional[float]:
+    """Parse 'Please try again in 240ms' / 'in 3.5s' / 'retry in 12s' from provider errors."""
+    m = re.search(r"try again in ([0-9.]+)\s*(ms|s)", err, re.I) or re.search(r"retry[^0-9]{0,20}([0-9.]+)\s*(ms|s)", err, re.I)
+    if not m:
+        return None
+    value = float(m.group(1))
+    return value / 1000 if m.group(2).lower() == "ms" else value
+
+
+def _is_transient(err: str) -> bool:
+    low = err.lower()
+    return any(k in low for k in _TRANSIENT)
+
+
+def _foreign_tool_history(messages: Sequence[BaseMessage], provider: str) -> bool:
+    """Gemini 3 requires its own 'thought signatures' on earlier tool calls in the same turn, so it cannot
+    continue a tool-calling loop that another provider started. Detect that case."""
+    for m in messages:
+        if isinstance(m, AIMessage) and m.tool_calls:
+            origin = (m.response_metadata or {}).get("lifeplan_provider")
+            if origin and origin != provider:
+                return True
+    return False
 
 
 def _usage(msg: AIMessage) -> dict:
@@ -157,23 +201,57 @@ def _portable(messages: Sequence[BaseMessage], provider: str) -> list[BaseMessag
 
 def invoke(agent: str, messages: Sequence[BaseMessage], trace: Trace, tools: Optional[list] = None,
            tool_choice: Optional[str] = None) -> AIMessage:
-    """Call the agent's model (with fallbacks), log it to the trace and return the AIMessage."""
-    errors = []
-    for i, spec in enumerate(model_chain(agent)):
-        provider = spec.split(":", 1)[0]
-        try:
-            model = get_model(spec)
-            runnable = model.bind_tools(tools, tool_choice=tool_choice) if tools else model
-            _wait_for_slot(spec)
-            t0 = time.time()
-            msg = runnable.invoke(_portable(messages, provider))
-            dt = int((time.time() - t0) * 1000)
-            if not isinstance(msg, AIMessage):
-                msg = AIMessage(content=str(getattr(msg, "content", msg)))
-            trace.llm_call(agent, spec, dt, _usage(msg), _text(msg), msg.tool_calls, fallback_used=i > 0)
-            return msg
-        except Exception as exc:  # noqa: BLE001 - provider SDKs raise many different types
-            err = redact(f"{type(exc).__name__}: {str(exc)[:300]}")
-            errors.append(f"{spec} -> {err}")
-            trace.emit("llm_error", agent, err, model=spec, will_fallback=i + 1 < len(model_chain(agent)))
-    raise LLMUnavailable("; ".join(errors) or "no LLM configured")
+    """Call the agent's model with resilience, log it to the trace and return the AIMessage.
+
+    * waits briefly and retries when a provider says "try again in Xs" (free-tier TPM limits)
+    * skips a model for BREAKER_SECONDS after it reports overload (503/504) — a circuit breaker
+    * never sends a Gemini model a tool-calling history produced by another provider
+    * falls back along the agent's model chain; if everything failed transiently, waits and tries once more
+    """
+    chain = model_chain(agent)
+    errors: list[str] = []
+    for round_no in range(2):
+        transient_only = True
+        for i, spec in enumerate(chain):
+            provider = spec.split(":", 1)[0]
+            is_last = i == len(chain) - 1
+            if provider == "gemini" and _foreign_tool_history(messages, provider):
+                continue
+            if _down_until.get(spec, 0) > time.time() and not (is_last and round_no == 1):
+                continue
+            for attempt in range(3):
+                try:
+                    model = get_model(spec)
+                    runnable = model.bind_tools(tools, tool_choice=tool_choice) if tools else model
+                    _wait_for_slot(spec)
+                    t0 = time.time()
+                    msg = runnable.invoke(_portable(messages, provider))
+                    dt = int((time.time() - t0) * 1000)
+                    if not isinstance(msg, AIMessage):
+                        msg = AIMessage(content=str(getattr(msg, "content", msg)))
+                    msg.response_metadata = {**(msg.response_metadata or {}), "lifeplan_provider": provider}
+                    trace.llm_call(agent, spec, dt, _usage(msg), _text(msg), msg.tool_calls,
+                                   fallback_used=spec != chain[0])
+                    _down_until.pop(spec, None)
+                    return msg
+                except Exception as exc:  # noqa: BLE001 - provider SDKs raise many different types
+                    err = redact(f"{type(exc).__name__}: {str(exc)[:300]}")
+                    errors.append(f"{spec} -> {err}")
+                    low = err.lower()
+                    wait = _retry_after(err)
+                    if not _is_transient(err):
+                        transient_only = False
+                    if any(k in low for k in _OVERLOAD):
+                        _down_until[spec] = time.time() + BREAKER_SECONDS
+                    retry_here = wait is not None and wait <= MAX_INLINE_WAIT and attempt < 2
+                    trace.emit("llm_error", agent, err, model=spec, will_retry=retry_here,
+                               will_fallback=not retry_here and not is_last)
+                    if retry_here:
+                        time.sleep(wait + 0.5)
+                        continue
+                    break
+        if not transient_only or round_no == 1 or not errors:
+            break
+        trace.emit("llm_wait", agent, "all models busy — waiting 10 s before one more attempt")
+        time.sleep(10)
+    raise LLMUnavailable("; ".join(errors[-4:]) or "no LLM configured")

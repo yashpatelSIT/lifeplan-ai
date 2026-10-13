@@ -77,6 +77,9 @@ def _earliest_open_start(cand: dict, earliest: datetime, duration: int) -> Optio
         fs = parse_dt(cand["fixed_start"])
         return fs if fs >= earliest else None
     intervals = opening_hours.intervals_on(spec, earliest.date())
+    if intervals is None and cand.get("default_hours"):
+        # hours not published: assume the category's typical hours (no midnight museum visits)
+        intervals = opening_hours.intervals_on(cand["default_hours"], earliest.date())
     if intervals is None:  # unknown hours: assume open, validator will flag it as 'unknown'
         return earliest
     for a, b in intervals:

@@ -135,13 +135,9 @@ def build_settings() -> Settings:
             models[agent] = override
     s.agent_models = models
 
-    fallbacks = [f.strip() for f in _env("LLM_FALLBACKS").split(",") if f.strip()]
-    if not fallbacks:
-        # Automatic cross-provider fallback: if Gemini is rate-limited, try Groq, etc.
-        for provider in s.available_providers:
-            if provider != primary:
-                fallbacks.append(DEFAULT_AGENT_MODELS[provider]["coordinator"])
-    s.llm_fallbacks = fallbacks
+    # Explicit global fallback chain (optional). By default each agent falls back to its own default model on
+    # every other configured provider — see lifeplan.llm.model_chain.
+    s.llm_fallbacks = [f.strip() for f in _env("LLM_FALLBACKS").split(",") if f.strip()]
     return s
 
 

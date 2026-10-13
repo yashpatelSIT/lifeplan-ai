@@ -179,7 +179,10 @@ def build_tools(ws: Workspace, review: bool = False) -> list:
         for p in res.get("places", []):
             if indoor_only and not p.get("indoor", True):
                 continue
-            if opening_hours.is_open_between(p.get("opening_hours"), s, e) is False:
+            open_ok = opening_hours.is_open_between(p.get("opening_hours"), s, e)
+            if open_ok is None:  # no published hours: use the category's typical hours
+                open_ok = opening_hours.is_open_between(p.get("default_hours"), s, e)
+            if open_ok is False:
                 continue
             good.append(p)
         found = _register(ws, good[:6], anchor)

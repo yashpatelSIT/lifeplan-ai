@@ -180,7 +180,8 @@ def build_graph(ctx: RunContext):
                 updates, report = module.run(dict(state), ctx, state.get("task", "review the draft"), review=True)
             except llm.LLMUnavailable as exc:
                 report, updates = f"(review skipped: {exc})", {}
-            verdict = "REVISE" if "revise" in report.lower() else "APPROVE"
+            low = report.lower()
+            verdict = "SKIPPED" if low.startswith("(review skipped") else ("REVISE" if "revise" in low else "APPROVE")
             trace.message(name, coordinator.NAME, report, kind="critique", verdict=verdict, round=rnd)
             allowed = {k: v for k, v in updates.items() if k in ("candidates", "logistics", "availability")}
             return {**allowed,

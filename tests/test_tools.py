@@ -190,3 +190,12 @@ def test_secrets_are_redacted_from_errors_and_traces(monkeypatch):
     tr = Trace()
     tr.emit("llm_error", "discovery", "boom SECRET-GEO-123456", detail={"url": "x?key=SECRET-GEO-123456"})
     assert "SECRET-GEO" not in str(tr.to_dict())
+
+
+def test_unpublished_hours_fall_back_to_category_typical_hours():
+    w = [Window(datetime(2026, 10, 13, 22, 30), datetime(2026, 10, 14, 1, 50), HOME, True)]
+    monument = _cand("statue", hours=None, default_hours="Mo-Su 09:00-19:00", priority=0.9)
+    bar = _cand("bar", hours=None, default_hours="Mo-Su 18:00-01:00", priority=0.4)
+    res = build_schedule(w, [monument, bar], _travel)
+    titles = [i["title"] for i in res.days[0]["items"] if i["kind"] != "travel"]
+    assert titles == ["bar"]  # no midnight sightseeing at a place whose hours are unknown

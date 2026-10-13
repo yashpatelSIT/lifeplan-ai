@@ -67,7 +67,9 @@ def travel_model(state: dict) -> TravelModel:
 
 def compact_candidate(c: dict) -> dict:
     out = {"id": c["id"], "name": c.get("name"), "cat": c.get("category"), "kind": c.get("kind"),
-           "km": c.get("distance_km"), "hours": c.get("opening_hours"), "cost": c.get("est_cost"),
+           "km": c.get("distance_km"),
+           "hours": c.get("opening_hours") or (f"typ. {c['default_hours']}" if c.get("default_hours") else None),
+           "cost": c.get("est_cost"),
            "indoor": c.get("indoor")}
     if c.get("fixed_start"):
         out["time"] = f"{c['fixed_start'][11:16]}-{(c.get('fixed_end') or '')[11:16]}"

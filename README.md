@@ -93,7 +93,7 @@ Docker works anywhere: `docker build -t lifeplan . && docker run -p 8000:8000 --
 
 ```bash
 pip install -r requirements-dev.txt
-pytest          # 36 offline tests: scripted tool-calling LLMs + fake HTTP, no keys needed
+pytest          # 41 offline tests: scripted tool-calling LLMs + fake HTTP, no keys needed
 ruff check .
 ```
 

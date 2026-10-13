@@ -173,6 +173,22 @@ def _run_graph(state: dict, trace: Trace) -> dict:
 
 
 # ------------------------------------------------------------------ result
+def _itinerary_sentence(days: list[dict], totals: dict, currency: Optional[str]) -> str:
+    """Deterministic one-line summary built from the actual plan (cannot drift from the itinerary)."""
+    stops = [(d["date"], it) for d in days for it in d["items"]
+             if it["kind"] in ("meal", "snack", "activity", "event", "flight", "train")]
+    if not stops:
+        return "No feasible plan could be built for the available time."
+    multi = len({dt for dt, _ in stops}) > 1
+    parts = [f"{(it['start'][5:10] + ' ') if multi else ''}{it['start'][11:16]} {it['title']}" for _, it in stops[:8]]
+    more = f" (+{len(stops) - 8} more)" if len(stops) > 8 else ""
+    cost = totals.get("cost")
+    budget = totals.get("budget")
+    money = f" Estimated cost ~{cost} {currency or ''}".rstrip() + (f" of {round(budget)} budget." if budget else ".") \
+        if cost is not None else ""
+    return f"{len(stops)} stop{'s' if len(stops) != 1 else ''}: " + "; ".join(parts) + more + "." + money
+
+
 def build_result(state: dict, trace: Trace, plan_id: str) -> PlanResult:
     draft = state.get("draft") or {}
     val = state.get("validation") or (validate_state(state) if draft else None) or {"issues": []}
@@ -216,8 +232,9 @@ def build_result(state: dict, trace: Trace, plan_id: str) -> PlanResult:
                       for d in days for it in d["items"] if it.get("place") and it["place"].get("source")})
     weather = state.get("weather") or {}
     agents_seen = sorted({e["agent"] for e in trace.events if e["type"] in ("agent_start", "decision")})
-    summary = state.get("final_summary") or (
-        f"Planned {draft.get('totals', {}).get('stops', 0)} stops." if draft else "No feasible plan could be built.")
+    summary = _itinerary_sentence(days, draft.get("totals", {}), state.get("currency"))
+    if state.get("final_summary"):
+        summary += f" Coordinator: {state['final_summary']}"
     return PlanResult(
         plan_id=plan_id, run_id=trace.run_id, status=state.get("status") or ("ok" if draft else "failed"),
         mode=state.get("mode", "auto"), summary=summary, timezone=state.get("timezone", ""), days=days,

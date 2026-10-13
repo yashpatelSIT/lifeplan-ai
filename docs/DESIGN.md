@@ -102,6 +102,7 @@ After every agent turn that touches a draft, the domain checks run (`lifeplan/to
 | `PREDICTED_BUSY` (learned routine) | Profile | medium/low depending on confidence |
 | `TRAVEL_INFEASIBLE`, `OVERLAP`, `OVER_BUDGET` | Logistics | high |
 | `CLOSED`, `UNVERIFIED_PLACE` (anti-hallucination) | Discovery | high |
+| `LIKELY_CLOSED` (no published hours, outside the category's typical hours) | Discovery | medium |
 | `WEATHER_RISK` (outdoor + rain) | Discovery | medium |
 | `HOURS_UNKNOWN`, `NEAR_BUDGET` | Discovery / Logistics | low |
 
@@ -170,7 +171,10 @@ Costs and some travel times are estimates. They are marked `estimate: true` and 
 |---|---|
 | Tool/API error | caught inside the agent's `act` node and returned to the LLM as `{"ok": false, "error": …}`; the agent adapts (e.g. widens the radius) |
 | Geoapify down / no key | automatic fallback to OSM Nominatim / Overpass / OSRM, then to a labelled estimate |
-| LLM rate limit / outage | next provider in the fallback chain (Gemini → Groq); `llm_error` + `fallback_used` logged |
+| LLM rate limit ("try again in 240 ms") | wait the suggested time and retry the same model (up to 20 s) |
+| LLM overloaded (503/504) | circuit breaker skips that model for 90 s; the agent's own fallback model on the next provider takes over (light agents fall back to light models, spreading free-tier quota) |
+| Provider switch mid tool-loop | Gemini is never asked to continue a tool-calling loop another provider started (it requires its own thought signatures) |
+| All models busy | wait 10 s and try the chain once more; `llm_error` / `llm_wait` / `fallback_used` are all logged |
 | No LLM reachable at all | per-agent deterministic fallback, plan status `partial`, warning shown |
 | Bad input | Pydantic validation → HTTP 422 with readable reasons; unknown place → 422 "Could not find…" |
 | Agent loops / indecision | step budget, revision limit, recursion limit, at most two review rounds |
@@ -191,7 +195,7 @@ Costs and some travel times are estimates. They are marked `estimate: true` and 
 
 ## 10. Testing and evaluation
 
-* **36 automated tests** (`pytest`, offline). They use scripted tool-calling LLMs and a fake HTTP layer with realistic API payloads, run in CI on Python 3.10 and 3.12, and run the **entire graph** end to end:
+* **41 automated tests** (`pytest`, offline). They use scripted tool-calling LLMs and a fake HTTP layer with realistic API payloads, run in CI on Python 3.10 and 3.12, and run the **entire graph** end to end:
   - a full run produces a grounded plan that respects availability, and every agent communicates;
   - the three-way conflict is detected and resolved through a planner revision;
   - LLM outage leads to degraded mode;

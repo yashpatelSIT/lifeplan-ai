@@ -141,7 +141,7 @@ class ScriptedChatModel(BaseChatModel):
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
         if self.fail:
-            raise RuntimeError("429 rate limit (simulated)")
+            raise RuntimeError("simulated provider outage (401 invalid api key)")
         msg = self.responder(self.agent, list(self.tool_names), messages)
         msg.usage_metadata = {"input_tokens": 100, "output_tokens": 20, "total_tokens": 120}
         return ChatResult(generations=[ChatGeneration(message=msg)])
