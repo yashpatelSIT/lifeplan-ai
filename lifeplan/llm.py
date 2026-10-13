@@ -26,20 +26,32 @@ class LLMUnavailable(RuntimeError):
 
 
 # ---------------------------------------------------------------- rate limiting
-_DEFAULT_RPM = {"gemini": 10, "groq": 25, "openai": 60}
+# Free-tier quotas are per model, so calls are spaced per model spec. Override with e.g. GEMINI_RPM=30
+# (a paid key) or GEMINI_RPM=0 to disable client-side limiting.
+_DEFAULT_RPM = {"gemini": 10, "gemini-lite": 15, "groq": 30, "openai": 0}
 _limit_lock = threading.Lock()
 _next_slot: dict[str, float] = {}
 
 
-def _wait_for_slot(provider: str) -> None:
-    rpm = float(os.getenv(f"{provider.upper()}_RPM", _DEFAULT_RPM.get(provider, 30)))
+def _rpm_for(spec: str) -> float:
+    provider, _, model = spec.partition(":")
+    env = os.getenv(f"{provider.upper()}_RPM")
+    if env is not None and env.strip() != "":
+        return float(env)
+    if provider == "gemini" and "lite" in model:
+        return _DEFAULT_RPM["gemini-lite"]
+    return float(_DEFAULT_RPM.get(provider, 30))
+
+
+def _wait_for_slot(spec: str) -> None:
+    rpm = _rpm_for(spec)
     if rpm <= 0:
         return
     gap = 60.0 / rpm
     with _limit_lock:
         now = time.monotonic()
-        slot = max(now, _next_slot.get(provider, 0.0))
-        _next_slot[provider] = slot + gap
+        slot = max(now, _next_slot.get(spec, 0.0))
+        _next_slot[spec] = slot + gap
     delay = slot - time.monotonic()
     if delay > 0:
         time.sleep(delay)
@@ -152,7 +164,7 @@ def invoke(agent: str, messages: Sequence[BaseMessage], trace: Trace, tools: Opt
         try:
             model = get_model(spec)
             runnable = model.bind_tools(tools, tool_choice=tool_choice) if tools else model
-            _wait_for_slot(provider)
+            _wait_for_slot(spec)
             t0 = time.time()
             msg = runnable.invoke(_portable(messages, provider))
             dt = int((time.time() - t0) * 1000)

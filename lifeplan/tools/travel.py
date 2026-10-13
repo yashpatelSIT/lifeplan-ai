@@ -18,7 +18,7 @@ from lifeplan.tools.places import search_places
 from lifeplan.tools.routing import travel_time
 
 SERPAPI = "https://serpapi.com/search.json"
-FRANKFURTER = "https://api.frankfurter.dev/v1/latest"
+FRANKFURTER = ("https://api.frankfurter.dev/v1/latest", "https://api.frankfurter.app/latest")
 RESTCOUNTRIES = "https://restcountries.com/v3.1/alpha/{code}"
 
 
@@ -27,13 +27,16 @@ def convert_currency(amount: float, from_cur: str, to_cur: str) -> dict:
     f, t = from_cur.upper(), to_cur.upper()
     if f == t:
         return {"ok": True, "amount": round(amount, 2), "currency": t, "rate": 1.0}
-    try:
-        data = request_json("frankfurter", "GET", FRANKFURTER, params={"base": f, "symbols": t}, cache_ttl=21600)
-        rate = data["rates"][t]
-        return {"ok": True, "amount": round(amount * rate, 2), "currency": t, "rate": rate,
-                "date": data.get("date"), "source": "frankfurter"}
-    except (ExternalAPIError, KeyError) as exc:
-        return {"ok": False, "error": f"no FX rate {f}->{t}: {exc}"}
+    error = None
+    for url in FRANKFURTER:
+        try:
+            data = request_json("frankfurter", "GET", url, params={"base": f, "symbols": t}, cache_ttl=21600)
+            rate = data["rates"][t]
+            return {"ok": True, "amount": round(amount * rate, 2), "currency": t, "rate": rate,
+                    "date": data.get("date"), "source": "frankfurter (ECB)"}
+        except (ExternalAPIError, KeyError) as exc:
+            error = exc
+    return {"ok": False, "error": f"no FX rate {f}->{t}: {error}"}
 
 
 def country_info(country_code: str) -> dict:

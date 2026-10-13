@@ -40,7 +40,7 @@ CATEGORIES: dict[str, dict] = {
     },
     "nightlife": {
         "geoapify": ["catering.bar", "catering.pub", "adult.nightclub"],
-        "osm": [("amenity", "bar"), ("amenity", "pub"), ("amenity", "nightclub")],
+        "osm": [("amenity", "bar"), ("amenity", "pub"), ("amenity", "nightclub"), ("amenity", "music_venue")],
         "duration": 90, "cost_inr": 1200, "indoor": True, "kind": "activity",
     },
     "museum": {
@@ -84,6 +84,11 @@ CATEGORIES: dict[str, dict] = {
         "osm": [("leisure", "sports_centre"), ("leisure", "stadium")],
         "duration": 90, "cost_inr": 300, "indoor": True, "kind": "activity",
     },
+    "beach": {
+        "geoapify": ["beach"],
+        "osm": [("natural", "beach")],
+        "duration": 120, "cost_inr": 0, "indoor": False, "kind": "activity",
+    },
     "religious": {
         "geoapify": ["religion.place_of_worship"],
         "osm": [("amenity", "place_of_worship")],
@@ -117,6 +122,8 @@ SYNONYMS = {
     "games": "entertainment", "bowling": "entertainment", "arcade": "entertainment", "entertainment": "entertainment",
     "escape room": "entertainment", "fun": "entertainment",
     "sports": "sports", "gym": "sports", "swimming": "sports", "fitness": "sports",
+    "comedy": "culture", "stand-up": "culture", "standup": "culture", "concert": "nightlife", "gallery": "culture",
+    "beach": "beach", "beaches": "beach", "seafood": "food", "anime": "shopping", "temples": "religious",
     "temple": "religious", "spiritual": "religious", "church": "religious",
     "library": "learning", "books": "learning", "workshop": "learning", "learning": "learning",
     "hotel": "hotel", "stay": "hotel",
@@ -151,6 +158,7 @@ def _geoapify_search(lat: float, lon: float, cats: list[str], radius_m: int, lim
     if not key:
         raise ExternalAPIError("geoapify-places", "no GEOAPIFY_API_KEY configured")
     out = []
+    errors = []
     for cat in cats:
         params = {
             "categories": ",".join(CATEGORIES[cat]["geoapify"]),
@@ -159,7 +167,11 @@ def _geoapify_search(lat: float, lon: float, cats: list[str], radius_m: int, lim
             "limit": limit,
             "apiKey": key,
         }
-        data = request_json("geoapify-places", "GET", GEOAPIFY_PLACES, params=params, cache_ttl=3600)
+        try:
+            data = request_json("geoapify-places", "GET", GEOAPIFY_PLACES, params=params, cache_ttl=3600)
+        except ExternalAPIError as exc:  # one bad category must not sink the others
+            errors.append(exc)
+            continue
         for f in data.get("features", []):
             p = f.get("properties", {})
             name = p.get("name")
@@ -184,6 +196,8 @@ def _geoapify_search(lat: float, lon: float, cats: list[str], radius_m: int, lim
                 "est_cost_inr": _estimate_cost(cat, raw),
                 "indoor": CATEGORIES[cat]["indoor"],
             })
+    if errors and len(errors) == len(cats):
+        raise errors[0]
     return out
 
 
@@ -192,7 +206,7 @@ def _overpass_search(lat: float, lon: float, cats: list[str], radius_m: int, lim
     for cat in cats:
         for k, v in CATEGORIES[cat]["osm"]:
             selectors.append(f'nwr["{k}"="{v}"]["name"](around:{radius_m},{lat},{lon});')
-    query = f"[out:json][timeout:20];({''.join(selectors)});out center tags {max(limit * len(cats), 20)};"
+    query = f"[out:json][timeout:20];({''.join(selectors)});out center {max(limit * len(cats), 20)};"
     data = None
     last_exc: Optional[Exception] = None
     for url in OVERPASS_URLS:
