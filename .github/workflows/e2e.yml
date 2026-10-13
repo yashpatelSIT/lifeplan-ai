@@ -11,14 +11,18 @@ on:
         description: "Sample request file"
         default: "samples/request_1_evening_conflict.json"
       replan:
-        description: "Optional replan event, e.g. 'weather|Heavy rain started' (leave empty to skip)"
-        default: ""
+        description: "Replan event after the first plan, as 'event|details'"
+        default: "weather|Heavy rain just started"
+  # Also runs automatically when a pushed commit message contains "[live]"
+  push:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   run:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[live]')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -41,8 +45,8 @@ jobs:
       - name: Run agents
         continue-on-error: true
         env:
-          REQ: ${{ inputs.request }}
-          EV: ${{ inputs.replan }}
+          REQ: ${{ inputs.request || 'samples/request_1_evening_conflict.json' }}
+          EV: ${{ inputs.replan || 'weather|Heavy rain just started' }}
         run: |
           set -o pipefail
           mkdir -p out
@@ -59,7 +63,7 @@ jobs:
       - name: Publish results to the e2e-results branch
         if: always()
         env:
-          REQ: ${{ inputs.request }}
+          REQ: ${{ inputs.request || 'samples/request_1_evening_conflict.json' }}
         run: |
           python - <<'PY'
           import os, pathlib
