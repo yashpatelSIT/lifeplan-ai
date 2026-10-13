@@ -1,0 +1,20 @@
+[project]
+name = "lifeplan-ai"
+version = "1.0.0"
+description = "LifePlan AI — a multi-agent AI personal planner for time, activities and travel (LangGraph)."
+requires-python = ">=3.10"
+readme = "README.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+extend-exclude = ["samples"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+ignore = ["E501", "B006", "B008", "B023"]
