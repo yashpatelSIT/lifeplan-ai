@@ -81,8 +81,8 @@ def search_flights(origin_city: str, dest_city: str, outbound_date: str, return_
                 if not legs:
                     continue
                 offers.append({
-                    "airline": " + ".join(sorted({l.get("airline", "?") for l in legs})),
-                    "flight_numbers": [l.get("flight_number") for l in legs],
+                    "airline": " + ".join(sorted({leg.get("airline", "?") for leg in legs})),
+                    "flight_numbers": [leg.get("flight_number") for leg in legs],
                     "depart": legs[0].get("departure_airport", {}).get("time"),
                     "arrive": legs[-1].get("arrival_airport", {}).get("time"),
                     "duration_min": group.get("total_duration"),

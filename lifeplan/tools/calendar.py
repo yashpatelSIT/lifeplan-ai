@@ -156,7 +156,7 @@ def learn_routine(history: list[dict], min_confidence: float = 0.5) -> dict:
             median = ends[len(ends) // 2]
             day_end[WEEKDAYS[wd]] = median.strftime("%H:%M")
     return {"weeks_observed": max(weeks_per_weekday.values()), "blocks": blocks,
-            "frequent_locations": [{"location": l, "count": c} for l, c in locs.most_common(5)],
+            "frequent_locations": [{"location": loc, "count": c} for loc, c in locs.most_common(5)],
             "typical_day_end": day_end}
 
 
@@ -200,7 +200,7 @@ def availability(window_start: datetime, window_end: datetime, events: list[dict
                   "location": e.get("location"), "source": "calendar"} for e in explicit
                  if e["end"] > window_start and e["start"] < window_end]
                 + [{"start": fmt(b["start"]), "end": fmt(b["end"]), "title": b.get("title", "Busy"),
-                    "source": "manual"} for b in manual_busy],
+                    "source": "manual"} for b in manual_busy if b["end"] > window_start and b["start"] < window_end],
         "predicted_busy": [{"start": fmt(p["start"]), "end": fmt(p["end"]), "title": p["title"],
                             "confidence": p["confidence"]} for p in predicted],
         "free_windows": [{"start": fmt(s), "end": fmt(e), "minutes": int((e - s).total_seconds() // 60)}

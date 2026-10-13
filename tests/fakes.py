@@ -58,6 +58,8 @@ class FakeSession:
                                               "city": "Pune", "country": "India", "country_code": "in",
                                               "timezone": {"name": "Asia/Kolkata"}}]})
         if "nominatim" in url:
+            if "nowhere" in str(params.get("q", "")).lower():
+                return FakeResponse([])
             return FakeResponse([{"display_name": "Pune, India", "lat": str(PUNE[0]), "lon": str(PUNE[1]),
                                   "address": {"city": "Pune", "country": "India", "country_code": "in"}}])
         if "geoapify.com/v2/places" in url:
