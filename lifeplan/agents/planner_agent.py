@@ -31,6 +31,7 @@ concrete schedule.
 - Only schedule candidates from the pool (ids). If you need a travel time or an alternative venue, consult the
   Logistics or Discovery agent directly with consult_logistics / consult_discovery.
 - Balance: interests first, a meal at sensible times, short travel, within budget, weather-appropriate.
+  A candidate's "pref" (0-1) is the user's learned preference for that category from past feedback.
 - When the Coordinator passes critiques from other agents, address each one explicitly.
 Finish with a short report (max 150 words): the plan outline (times + places), totals vs budget, which conflicts you
 resolved and how, and anything you could not fit."""
@@ -245,6 +246,8 @@ def fallback(state: dict, ctx: RunContext) -> tuple[dict, str]:
             continue
         score = 0.8 if c.get("category") in interests or c.get("kind") == "event" else 0.4
         score -= min(0.3, (c.get("distance_km") or 0) / 30)
+        if c.get("learned_weight") is not None:
+            score += (float(c["learned_weight"]) - 0.5) * 0.4
         pri.append(f"{c['id']}:{round(max(score, 0.05), 2)}")
     res = tools["build_schedule"].func(pri)
     return ws.updates(), f"[deterministic fallback, LLM unavailable] draft built: {res.get('ok')}"

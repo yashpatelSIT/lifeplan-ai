@@ -72,6 +72,8 @@ def compact_candidate(c: dict) -> dict:
     if c.get("fixed_start"):
         out["time"] = f"{c['fixed_start'][11:16]}-{(c.get('fixed_end') or '')[11:16]}"
         out["date"] = c["fixed_start"][:10]
+    if c.get("learned_weight") is not None:
+        out["pref"] = c["learned_weight"]  # learned from the user's past feedback (0..1)
     if c.get("unavailable"):
         out["UNAVAILABLE"] = c["unavailable"]
     return {k: v for k, v in out.items() if v not in (None, "")}
