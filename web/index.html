@@ -1,176 +1,514 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LifePlan AI</title>
-  <meta name="description" content="Multi-agent AI personal planner for time, activities and travel">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235b5bd6'/><path d='M9 22V10h3v9h7v3z' fill='white'/><circle cx='22' cy='11' r='3' fill='%23ffd166'/></svg>">
+  <title>LifePlan AI — Autonomous Multi-Agent Personal Planner</title>
+  <meta name="description" content="Five autonomous AI agents collaborate in real-time to plan your free time, activities, and travel.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%236366f1'/><path d='M9 22V10h3v9h7v3z' fill='white'/><circle cx='22' cy='11' r='3.5' fill='%23f59e0b'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+
+<!-- ============================================================ TOPBAR -->
 <header class="topbar">
   <div class="brand">
-    <div class="logo">L</div>
+    <div class="logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+      </svg>
+    </div>
     <div>
-      <h1>LifePlan AI</h1>
-      <p>Five AI agents plan your free time, days and trips — together.</p>
+      <div class="brand-title-wrap">
+        <h1>LifePlan AI</h1>
+        <span class="badge-pill">LangGraph Multi-Agent</span>
+      </div>
+      <p class="brand-sub">Five autonomous AI agents orchestrate your time, activities & travel</p>
     </div>
   </div>
-  <div id="health" class="health"></div>
+
+  <div class="topbar-actions">
+    <button type="button" id="btn-about" class="btn-topbar" title="Understand how the 5 agents collaborate">
+      <span class="icon">📘</span> How It Works
+    </button>
+    <button type="button" id="btn-theme" class="btn-topbar icon-only" title="Toggle dark / light mode">
+      <span id="theme-icon">🌙</span>
+    </button>
+    <div id="health" class="health"></div>
+  </div>
 </header>
 
+<!-- ============================================================ MAIN LAYOUT -->
 <main class="layout">
-  <!-- ------------------------------------------------------------ request form -->
+  
+  <!-- ---------------------------------------------------------- LEFT COLUMN: INPUT -->
   <section class="card form-card">
-    <h2>What should we plan?</h2>
-    <div id="samples" class="chips samples"></div>
+    <div class="card-head">
+      <div>
+        <h2>Create a Plan</h2>
+        <p class="card-sub">Choose a scenario or describe what you want in plain words</p>
+      </div>
+    </div>
+
+    <!-- Quick Preset Cards -->
+    <div class="preset-section">
+      <div class="preset-title">
+        <span>⚡ Quick Demo Scenarios</span>
+        <span class="preset-hint">1-click presets</span>
+      </div>
+      <div id="preset-cards" class="preset-grid">
+        <!-- populated dynamically from /api/samples with fallback cards -->
+      </div>
+      <div id="samples" class="chips samples hidden"></div>
+    </div>
 
     <form id="plan-form" autocomplete="off">
-      <label class="full">Your request
+      <div class="form-group full">
+        <label for="query">
+          Your Request
+          <span class="req-star">*</span>
+          <span class="label-hint">What do you want to do?</span>
+        </label>
         <textarea id="query" rows="3" required minlength="3"
-          placeholder="e.g. I'm free after my meeting tonight — want live comedy and a good dinner under ₹1500"></textarea>
-      </label>
+          placeholder="e.g. Free after my meeting tonight — want live comedy and a good dinner under ₹1500"></textarea>
+      </div>
 
-      <label>Plan type
+      <div class="form-group">
+        <label for="mode">Plan Type</label>
         <select id="mode">
-          <option value="auto">Auto-detect</option>
-          <option value="now">What can I do right now?</option>
-          <option value="free_time">A few free hours</option>
-          <option value="evening">Evening</option>
-          <option value="day">Full day</option>
-          <option value="weekend">Weekend</option>
-          <option value="local_outing">Local outing</option>
-          <option value="explore">Explore near me</option>
-          <option value="domestic_trip">Domestic trip</option>
-          <option value="international_trip">International vacation</option>
-          <option value="business_trip">Business trip</option>
+          <option value="auto">🪄 Auto-detect from query</option>
+          <option value="now">⚡ What can I do right now?</option>
+          <option value="free_time">⏳ A few free hours</option>
+          <option value="evening">🌆 Evening outing</option>
+          <option value="day">☀️ Full day itinerary</option>
+          <option value="weekend">🏖️ Weekend getaway</option>
+          <option value="local_outing">🎯 Local outing</option>
+          <option value="explore">🧭 Explore near me</option>
+          <option value="domestic_trip">🚗 Domestic trip</option>
+          <option value="international_trip">✈️ International vacation</option>
+          <option value="business_trip">💼 Business trip</option>
         </select>
-      </label>
-      <label>Starting location
-        <div class="row">
-          <input id="location" value="Shivajinagar, Pune" required>
-          <button type="button" id="geo-btn" class="icon-btn" title="Use my current location">◎</button>
-        </div>
-      </label>
-      <label id="dest-wrap" class="hidden">Destination
-        <input id="destination" placeholder="e.g. Goa, Jaipur, Tokyo">
-      </label>
-      <label>From <input id="start" type="datetime-local"></label>
-      <label>To <input id="end" type="datetime-local"></label>
-      <label>Budget
-        <div class="row">
-          <input id="budget" type="number" min="0" step="50" placeholder="1500">
-          <select id="currency" class="cur"><option>INR</option><option>USD</option><option>EUR</option><option>GBP</option><option>JPY</option><option>AED</option><option>SGD</option><option>THB</option></select>
-        </div>
-      </label>
-      <label>People <input id="party" type="number" min="1" max="20" value="1"></label>
+      </div>
 
-      <div class="full">
-        <span class="label">Interests</span>
+      <div class="form-group">
+        <label for="location">
+          Starting Location
+          <span class="req-star">*</span>
+        </label>
+        <div class="input-with-button">
+          <input id="location" value="Shivajinagar, Pune" required placeholder="City or area">
+          <button type="button" id="geo-btn" class="input-action-btn" title="Use current GPS location">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <circle cx="12" cy="12" r="3"></circle>
+              <line x1="12" y1="2" x2="12" y2="5"></line>
+              <line x1="12" y1="19" x2="12" y2="22"></line>
+              <line x1="2" y1="12" x2="5" y2="12"></line>
+              <line x1="19" y1="12" x2="22" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="dest-wrap" class="form-group full hidden">
+        <label for="destination">Destination (for trips)</label>
+        <input id="destination" placeholder="e.g. Goa, Jaipur, Tokyo, Bengaluru">
+      </div>
+
+      <div class="form-group">
+        <label for="start">Start Date & Time</label>
+        <input id="start" type="datetime-local">
+      </div>
+
+      <div class="form-group">
+        <label for="end">End Date & Time</label>
+        <input id="end" type="datetime-local">
+      </div>
+
+      <div class="form-group">
+        <label for="budget">Budget (optional)</label>
+        <div class="input-split">
+          <input id="budget" type="number" min="0" step="50" placeholder="1500">
+          <select id="currency" class="cur">
+            <option>INR</option>
+            <option>USD</option>
+            <option>EUR</option>
+            <option>GBP</option>
+            <option>JPY</option>
+            <option>AED</option>
+            <option>SGD</option>
+            <option>THB</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="party">Party Size</label>
+        <div class="input-stepper">
+          <input id="party" type="number" min="1" max="20" value="1">
+          <span class="stepper-label">people</span>
+        </div>
+      </div>
+
+      <div class="form-group full">
+        <label>Interests & Themes</label>
         <div id="interests" class="chips toggle"></div>
       </div>
-      <div class="full">
-        <span class="label">Travel modes</span>
+
+      <div class="form-group full">
+        <label>Preferred Travel Modes</label>
         <div id="modes" class="chips toggle"></div>
       </div>
-      <label>Pace
-        <select id="pace"><option value="relaxed">Relaxed</option><option value="balanced" selected>Balanced</option><option value="packed">Packed</option></select>
-      </label>
-      <label>Calendar (.ics)
-        <input id="ics" type="file" accept=".ics,text/calendar">
-      </label>
-      <label class="check full"><input id="learned" type="checkbox" checked> Let the Profile agent learn my routine from calendar history (demo calendar if none uploaded)</label>
+
+      <div class="form-group">
+        <label for="pace">Pace & Intensity</label>
+        <select id="pace">
+          <option value="relaxed">☕ Relaxed (more time at stops)</option>
+          <option value="balanced" selected>⚖️ Balanced (optimal mix)</option>
+          <option value="packed">🏃 Packed (maximize activities)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="ics">Upload Calendar (.ics)</label>
+        <input id="ics" type="file" accept=".ics,text/calendar" class="file-input">
+      </div>
+
+      <div class="form-group full checkbox-group">
+        <label class="check">
+          <input id="learned" type="checkbox" checked>
+          <span>Learn routine from calendar history (protects work/commute hours)</span>
+        </label>
+      </div>
 
       <details class="full busy-box">
-        <summary>Add busy times manually</summary>
-        <div id="busy-list"></div>
-        <button type="button" id="add-busy" class="ghost">+ Add busy block</button>
+        <summary>
+          <span>📅 Add Busy / Clashing Times Manually</span>
+          <span class="summary-arrow">›</span>
+        </summary>
+        <div class="busy-inner">
+          <p class="busy-hint">Define meetings or events. The Coordinator & Profile agents will automatically detect conflicts and schedule around them.</p>
+          <div id="busy-list"></div>
+          <button type="button" id="add-busy" class="btn-subtle">+ Add Busy Block</button>
+        </div>
       </details>
 
-      <button id="submit" class="primary full" type="submit">Plan it with 5 agents →</button>
+      <button id="submit" class="btn-primary full" type="submit">
+        <span class="btn-icon">⚡</span>
+        <span class="btn-text">Plan It with 5 Agents</span>
+      </button>
     </form>
   </section>
 
-  <!-- ------------------------------------------------------------ results -->
+  <!-- ---------------------------------------------------------- RIGHT COLUMN: OUTPUT -->
   <section class="card out-card">
-    <div class="agents-bar" id="agents-bar">
-      <div class="agent" data-agent="coordinator"><span>🤖</span>Coordinator</div>
-      <div class="agent" data-agent="profile"><span>🧠</span>Profile</div>
-      <div class="agent" data-agent="discovery"><span>📍</span>Discovery</div>
-      <div class="agent" data-agent="logistics"><span>🚗</span>Logistics</div>
-      <div class="agent" data-agent="planner"><span>📅</span>Planner</div>
+    
+    <!-- Multi-Agent Status Board -->
+    <div class="agents-board">
+      <div class="board-header">
+        <span class="board-title">Collaborating Agent Subgraphs</span>
+        <span class="board-status" id="board-status-text">Standby</span>
+      </div>
+      <div class="agents-bar" id="agents-bar">
+        <div class="agent" data-agent="coordinator" title="Adaptive Coordinator: Main supervisor, conflict resolution, re-planning">
+          <div class="agent-avatar">🤖</div>
+          <div class="agent-meta">
+            <span class="agent-name">Coordinator</span>
+            <span class="agent-desc">Supervisor</span>
+          </div>
+          <div class="agent-status-dot"></div>
+        </div>
+        <div class="agent" data-agent="profile" title="Profile Agent: Calendar learning, free windows, routine protection">
+          <div class="agent-avatar">🧠</div>
+          <div class="agent-meta">
+            <span class="agent-name">Profile</span>
+            <span class="agent-desc">Availability</span>
+          </div>
+          <div class="agent-status-dot"></div>
+        </div>
+        <div class="agent" data-agent="discovery" title="Discovery Agent: Real places, live weather, verified events, map IDs">
+          <div class="agent-avatar">📍</div>
+          <div class="agent-meta">
+            <span class="agent-name">Discovery</span>
+            <span class="agent-desc">Venues & Events</span>
+          </div>
+          <div class="agent-status-dot"></div>
+        </div>
+        <div class="agent" data-agent="logistics" title="Logistics Agent: Real road routing, transport times, flights & budget">
+          <div class="agent-avatar">🚗</div>
+          <div class="agent-meta">
+            <span class="agent-name">Logistics</span>
+            <span class="agent-desc">Transit & Cost</span>
+          </div>
+          <div class="agent-status-dot"></div>
+        </div>
+        <div class="agent" data-agent="planner" title="Planner Agent: Schedule solver, constraint optimization, trade-offs">
+          <div class="agent-avatar">📅</div>
+          <div class="agent-meta">
+            <span class="agent-name">Planner</span>
+            <span class="agent-desc">Optimization</span>
+          </div>
+          <div class="agent-status-dot"></div>
+        </div>
+      </div>
     </div>
+
+    <!-- Planning Stage Pipeline Tracker -->
+    <div class="pipeline-wrap" id="pipeline-wrap">
+      <div class="pipeline-step active" data-step="1">
+        <div class="step-circle">1</div>
+        <span class="step-text">Setup</span>
+      </div>
+      <div class="pipeline-divider"></div>
+      <div class="pipeline-step" data-step="2">
+        <div class="step-circle">2</div>
+        <span class="step-text">Discovery & Logistics</span>
+      </div>
+      <div class="pipeline-divider"></div>
+      <div class="pipeline-step" data-step="3">
+        <div class="step-circle">3</div>
+        <span class="step-text">Drafting Schedule</span>
+      </div>
+      <div class="pipeline-divider"></div>
+      <div class="pipeline-step" data-step="4">
+        <div class="step-circle">4</div>
+        <span class="step-text">Critique & Conflicts</span>
+      </div>
+      <div class="pipeline-divider"></div>
+      <div class="pipeline-step" data-step="5">
+        <div class="step-circle">5</div>
+        <span class="step-text">Final Plan</span>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
     <nav class="tabs">
-      <button class="tab active" data-tab="live">Agents (live)</button>
-      <button class="tab" data-tab="plan">Plan</button>
-      <button class="tab" data-tab="map">Map</button>
-      <button class="tab" data-tab="trace">Trace</button>
+      <button class="tab active" data-tab="live">
+        <span class="tab-icon">⚡</span> Live Stream
+      </button>
+      <button class="tab" data-tab="plan">
+        <span class="tab-icon">📋</span> Final Itinerary
+      </button>
+      <button class="tab" data-tab="map">
+        <span class="tab-icon">🗺️</span> Map & Route
+      </button>
+      <button class="tab" data-tab="trace">
+        <span class="tab-icon">🔍</span> Execution Trace
+      </button>
     </nav>
 
+    <!-- --------------------------------- TAB 1: LIVE STREAM -->
     <div class="tab-body" id="tab-live">
-      <div id="status-line" class="status-line">Pick a scenario or describe what you want, then press <b>Plan it</b>.</div>
-      <label class="check small"><input id="show-llm" type="checkbox"> show raw LLM calls</label>
+      <div id="status-line" class="status-line">
+        Select a scenario or describe what you want, then click <b>Plan It</b>.
+      </div>
+      
+      <div class="feed-toolbar">
+        <div class="feed-filters" id="feed-filters">
+          <button type="button" class="feed-filter active" data-filter="all">All</button>
+          <button type="button" class="feed-filter" data-filter="message">Messages 💬</button>
+          <button type="button" class="feed-filter" data-filter="decision">Decisions 🎯</button>
+          <button type="button" class="feed-filter" data-filter="conflict">Conflicts ⚠️</button>
+          <button type="button" class="feed-filter" data-filter="tool">Tools 🔧</button>
+        </div>
+        <label class="check small llm-toggle">
+          <input id="show-llm" type="checkbox">
+          <span>Show raw LLM calls</span>
+        </label>
+      </div>
+
       <div id="feed" class="feed"></div>
     </div>
 
+    <!-- --------------------------------- TAB 2: PLAN -->
     <div class="tab-body hidden" id="tab-plan">
-      <div id="plan-empty" class="empty">No plan yet.</div>
+      <div id="plan-empty" class="empty">
+        <div class="empty-icon">📅</div>
+        <h3>No plan generated yet</h3>
+        <p>Pick a preset scenario on the left or enter your request and click Plan It.</p>
+      </div>
+
       <div id="plan" class="hidden">
-        <div class="plan-head">
-          <span id="plan-status" class="badge"></span>
-          <p id="plan-summary"></p>
+        
+        <!-- Plan Header & Action Toolbar -->
+        <div class="plan-hero-card">
+          <div class="plan-hero-top">
+            <span id="plan-status" class="badge"></span>
+            <div class="plan-export-actions">
+              <button type="button" id="btn-export-ics" class="btn-action" title="Download .ics calendar file to import to Google/Apple/Outlook Calendar">
+                <span class="icon">📅</span> Add to Calendar (.ics)
+              </button>
+              <button type="button" id="btn-copy-plan" class="btn-action" title="Copy formatted itinerary to clipboard">
+                <span class="icon">📋</span> Copy Plan
+              </button>
+              <button type="button" id="btn-print-plan" class="btn-action" title="Print or save as PDF">
+                <span class="icon">🖨️</span> Print / PDF
+              </button>
+            </div>
+          </div>
+          <h2 id="plan-summary" class="plan-summary-text"></h2>
         </div>
+
+        <!-- Metrics Dashboard -->
         <div id="totals" class="totals"></div>
-        <div id="weather" class="weather"></div>
-        <div id="timeline"></div>
+
+        <!-- Weather Strip -->
+        <div id="weather" class="weather-strip"></div>
+
+        <!-- Timeline Items -->
+        <div id="timeline" class="timeline-container"></div>
+
+        <!-- Conflict Resolution Details -->
         <div id="conflicts"></div>
+
+        <!-- Warnings / Notes -->
         <div id="warnings"></div>
+
+        <!-- Alternative Venues / Options -->
         <div id="alternatives"></div>
-        <div class="replan">
-          <h3>Something changed? Let the agents adapt the plan</h3>
-          <div class="row wrap">
-            <button class="ghost" data-replan="weather">🌧️ It's raining</button>
-            <button class="ghost" data-replan="delay">⏰ I'm running 45 min late</button>
-            <button class="ghost" data-replan="closed">🚫 A venue is closed</button>
-            <button class="ghost" data-replan="schedule_change">📆 My meeting got extended</button>
+
+        <!-- Re-planning Section -->
+        <div class="replan-section">
+          <div class="replan-header">
+            <h3>🔄 Real-World Re-Planning</h3>
+            <p>Something changed? The 5 agents dynamically re-evaluate constraints and adapt your plan without restarting.</p>
           </div>
-          <div class="row wrap">
-            <select id="replan-item"></select>
-            <input id="replan-text" placeholder="Describe the change (optional)">
+          <div class="replan-buttons">
+            <button type="button" class="btn-replan" data-replan="weather">🌧️ It's Raining</button>
+            <button type="button" class="btn-replan" data-replan="delay">⏰ Running 45m Late</button>
+            <button type="button" class="btn-replan" data-replan="closed">🚫 Venue Closed</button>
+            <button type="button" class="btn-replan" data-replan="schedule_change">📆 Meeting Extended</button>
+          </div>
+          <div class="replan-custom-row">
+            <select id="replan-item" class="replan-select"></select>
+            <input id="replan-text" placeholder="Custom event notes (e.g., flight delayed by 2 hours)">
           </div>
         </div>
-        <div class="feedback">
-          <h3>Rate this plan (the Profile agent learns from it)</h3>
-          <div class="row wrap">
-            <select id="rating"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
-            <input id="liked" placeholder="liked categories, e.g. food, museum">
-            <input id="disliked" placeholder="disliked, e.g. nightlife">
-            <button id="send-feedback" class="ghost">Send feedback</button>
+
+        <!-- User Feedback / Memory Learning -->
+        <div class="feedback-section">
+          <div class="feedback-header">
+            <h3>⭐ Profile Learning & Feedback</h3>
+            <p>Rate this plan. The Profile Agent updates its persistent memory to tailor future recommendations.</p>
           </div>
-          <div id="feedback-out" class="muted"></div>
+          <div class="feedback-row">
+            <select id="rating" class="rating-select">
+              <option value="5">⭐⭐⭐⭐⭐ Excellent (5)</option>
+              <option value="4">⭐⭐⭐⭐ Good (4)</option>
+              <option value="3">⭐⭐⭐ Neutral (3)</option>
+              <option value="2">⭐⭐ Poor (2)</option>
+              <option value="1">⭐ Bad (1)</option>
+            </select>
+            <input id="liked" placeholder="Liked categories (e.g. cafe, live comedy, Italian)">
+            <input id="disliked" placeholder="Disliked (e.g. crowded clubs, fast food)">
+            <button id="send-feedback" class="btn-subtle" type="button">Submit Feedback</button>
+          </div>
+          <div id="feedback-out" class="feedback-result"></div>
         </div>
+
       </div>
     </div>
 
-    <div class="tab-body hidden" id="tab-map"><div id="map"></div></div>
+    <!-- --------------------------------- TAB 3: MAP -->
+    <div class="tab-body hidden" id="tab-map">
+      <div class="map-container">
+        <div id="map"></div>
+      </div>
+    </div>
 
+    <!-- --------------------------------- TAB 4: TRACE -->
     <div class="tab-body hidden" id="tab-trace">
       <div id="trace-stats" class="totals"></div>
-      <p class="muted">Every message, tool call and LLM call of the run is recorded with timestamps — this is the
-        execution trace submitted as evidence of genuine multi-agent collaboration.</p>
-      <div class="row wrap">
-        <a id="dl-json" class="ghost btn disabled" download>Download trace (JSON)</a>
-        <a id="dl-md" class="ghost btn disabled" download>Download trace (Markdown)</a>
-        <a class="ghost btn" href="/docs" target="_blank">API docs</a>
+      <div class="trace-info-box">
+        <h4>Genuine Multi-Agent Collaboration Evidence</h4>
+        <p>Every decision, message, tool invocation, and LLM call is recorded with millisecond timestamps and structured input/output signatures.</p>
+      </div>
+      <div class="trace-actions">
+        <a id="dl-json" class="btn-trace disabled" download>
+          <span>📥</span> Download Trace (JSON)
+        </a>
+        <a id="dl-md" class="btn-trace disabled" download>
+          <span>📄</span> Download Transcript (Markdown)
+        </a>
+        <a class="btn-trace" href="/docs" target="_blank" rel="noopener">
+          <span>🚀</span> Interactive API Docs (Swagger)
+        </a>
       </div>
     </div>
+
   </section>
 </main>
 
+<!-- ============================================================ HOW IT WORKS MODAL -->
+<div id="about-modal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title-group">
+        <h2>How LifePlan AI Works</h2>
+        <span class="badge-pill">CA3 Multi-Agent Architecture</span>
+      </div>
+      <button type="button" id="btn-close-about" class="modal-close-btn">✕</button>
+    </div>
+    
+    <div class="modal-content">
+      <div class="arch-flow">
+        <h3>1. Hierarchical Orchestration over a Shared Blackboard</h3>
+        <p>Unlike rigid sequential pipelines, LifePlan AI is a true autonomous multi-agent system powered by <b>LangGraph</b>. The <b>Adaptive Coordinator</b> acts as the supervisor, inspecting the blackboard state after every turn to decide the next best action: delegating to a specialist, initiating a parallel critique round, or finalizing.</p>
+      </div>
+
+      <div class="agents-breakdown">
+        <h3>2. The Five Specialist Agents</h3>
+        <div class="agent-card-grid">
+          <div class="mini-agent-card">
+            <h4>🤖 Adaptive Coordinator</h4>
+            <p>Main decision-maker. Manages supervisor routing, evaluates conflict severities, enforces guardrails, and drives adaptive re-planning.</p>
+          </div>
+          <div class="mini-agent-card">
+            <h4>🧠 Personal Profile & Routine</h4>
+            <p>Parses calendar histories (.ics / RRULE) to infer recurring routines. Computes true free windows with commute buffers and raises clashes.</p>
+          </div>
+          <div class="mini-agent-card">
+            <h4>📍 Discovery & Grounding</h4>
+            <p>Grounds places in real-world APIs (Geoapify, OpenStreetMap Overpass). Verifies live events with Tavily/SerpApi and checks Open-Meteo weather.</p>
+          </div>
+          <div class="mini-agent-card">
+            <h4>🚗 Travel & Logistics</h4>
+            <p>Calculates multi-modal travel times (OSRM road network, transit, walking), flight/hotel estimates, currency conversions, and budget limits.</p>
+          </div>
+          <div class="mini-agent-card">
+            <h4>📅 Planner & Optimization</h4>
+            <p>Schedule solver that optimizes times, routes, opening hours, and pacing. Interacts peer-to-peer with Logistics and Discovery when needed.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-flow">
+        <h3>3. Parallel Review Rounds & Conflict Resolution</h3>
+        <p>Once a draft itinerary is built, Profile, Discovery, and Logistics review the schedule in <b>parallel fan-out</b> (LangGraph <code>Send</code>). If an opening hour clashes with arrival time, or travel exceeds budget, a conflict is detected. The Coordinator identifies the conflicting constraints and routes it back for an intelligent revision.</p>
+      </div>
+
+      <div class="arch-flow">
+        <h3>4. Real-World Data Grounding</h3>
+        <p>All venue locations, road network travel durations, weather conditions, and foreign exchange rates are grounded in live services: Geoapify, Open-Meteo, OpenStreetMap, Tavily, SerpApi, and Frankfurter.</p>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" id="btn-close-modal-bottom" class="btn-primary">Got it, let's plan!</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ TOAST CONTAINER -->
+<div id="toast-container" class="toast-container"></div>
+
 <footer class="foot">
-  Data: OpenStreetMap contributors · Geoapify · Open-Meteo · Tavily · SerpApi · Frankfurter. Costs marked ~ are estimates.
+  <p>LifePlan AI • Multi-Agent Autonomous Systems CA3 Project • Built with LangGraph, LangChain & FastAPI</p>
+  <p class="foot-sub">Real-world data grounded via OpenStreetMap, Geoapify, Open-Meteo, Tavily, SerpApi & Frankfurter.</p>
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>

@@ -126,8 +126,9 @@ def build_settings() -> Settings:
     if _env("TRACE_DIR"):
         s.trace_dir = Path(_env("TRACE_DIR"))
 
-    # Primary provider = first one with a key (gemini > groq > openai).
-    primary = (s.available_providers or ["gemini"])[0]
+    # Primary provider = PRIMARY_LLM_PROVIDER env var, or first one with a key (gemini > groq > openai).
+    primary_pref = _env("PRIMARY_LLM_PROVIDER").lower()
+    primary = primary_pref if primary_pref in s.available_providers else (s.available_providers or ["gemini"])[0]
     models = dict(DEFAULT_AGENT_MODELS[primary])
     for agent in AGENT_NAMES:
         override = _env(f"LLM_{agent.upper()}")

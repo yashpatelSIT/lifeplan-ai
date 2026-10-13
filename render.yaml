@@ -22,6 +22,8 @@ services:
         sync: false
       - key: SERPAPI_API_KEY
         sync: false
+      - key: PRIMARY_LLM_PROVIDER
+        value: groq
       - key: DEFAULT_TIMEZONE
         value: Asia/Kolkata
       - key: OSM_CONTACT
