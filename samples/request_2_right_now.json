@@ -1,0 +1,20 @@
+{
+  "_label": "What can I do right now?",
+  "query": "What can I do right now nearby for the next 2-3 hours? Something chill, maybe a cafe and a short walk.",
+  "mode": "now",
+  "location": "FC Road, Pune",
+  "interests": [
+    "cafe",
+    "nature",
+    "attractions"
+  ],
+  "budget": {
+    "amount": 600,
+    "currency": "INR"
+  },
+  "travel_modes": [
+    "walk",
+    "transit"
+  ],
+  "use_learned_schedule": false
+}

@@ -1,0 +1,22 @@
+{
+  "_label": "Weekend in Pune",
+  "query": "Plan my weekend in Pune: some history and culture, a nice park or viewpoint, good local food. Not too rushed.",
+  "mode": "weekend",
+  "location": "Kothrud, Pune",
+  "interests": [
+    "culture",
+    "museum",
+    "nature",
+    "food"
+  ],
+  "budget": {
+    "amount": 3000,
+    "currency": "INR"
+  },
+  "travel_modes": [
+    "walk",
+    "transit",
+    "cab"
+  ],
+  "pace": "relaxed"
+}

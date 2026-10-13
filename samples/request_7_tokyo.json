@@ -1,0 +1,26 @@
+{
+  "_label": "5-day Tokyo vacation",
+  "query": "International vacation: 5 days in Tokyo — temples, food markets, anime/shopping districts and a day of nature.",
+  "mode": "international_trip",
+  "location": "Pune",
+  "destination": "Tokyo",
+  "start": "+30d 02:00",
+  "end": "+34d 23:00",
+  "interests": [
+    "culture",
+    "food",
+    "shopping",
+    "nature",
+    "museum"
+  ],
+  "budget": {
+    "amount": 250000,
+    "currency": "INR"
+  },
+  "travel_modes": [
+    "flight",
+    "transit",
+    "walk"
+  ],
+  "use_learned_schedule": false
+}

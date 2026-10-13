@@ -1,0 +1,33 @@
+{
+  "_label": "After a meeting (conflict demo)",
+  "query": "I'm stuck in a project meeting at the office in Hinjewadi for the next 90 minutes. After that I want to catch a live comedy or music show and have a good dinner. Budget ₹1500.",
+  "mode": "free_time",
+  "location": "Shivajinagar, Pune",
+  "interests": [
+    "comedy",
+    "live music",
+    "food"
+  ],
+  "budget": {
+    "amount": 1500,
+    "currency": "INR"
+  },
+  "travel_modes": [
+    "walk",
+    "transit",
+    "cab"
+  ],
+  "busy_blocks": [
+    {
+      "start": "now",
+      "end": "now+90m",
+      "title": "Project meeting (office)",
+      "location": "Hinjewadi, Pune"
+    }
+  ],
+  "pace": "balanced",
+  "party_size": 1,
+  "use_learned_schedule": true,
+  "start": "now",
+  "end": "now+330m"
+}

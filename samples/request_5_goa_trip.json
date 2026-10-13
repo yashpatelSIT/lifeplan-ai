@@ -1,0 +1,26 @@
+{
+  "_label": "3-day Goa trip",
+  "query": "Plan a 3-day trip from Pune to Goa: beaches, Portuguese heritage, seafood. Mid-range hotel.",
+  "mode": "domestic_trip",
+  "location": "Pune",
+  "destination": "Panaji, Goa",
+  "start": "next friday 06:00",
+  "end": "next sunday 22:00",
+  "interests": [
+    "nature",
+    "culture",
+    "food",
+    "nightlife"
+  ],
+  "budget": {
+    "amount": 25000,
+    "currency": "INR"
+  },
+  "travel_modes": [
+    "cab",
+    "train",
+    "flight",
+    "walk"
+  ],
+  "use_learned_schedule": false
+}

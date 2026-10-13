@@ -1,0 +1,37 @@
+{
+  "_label": "Business trip to Bengaluru",
+  "query": "Business trip to Bengaluru: client meetings both days. Plan travel, a hotel near the meetings and evenings around them.",
+  "mode": "business_trip",
+  "location": "Pune",
+  "destination": "Koramangala, Bengaluru",
+  "start": "+7d 06:00",
+  "end": "+8d 22:00",
+  "busy_blocks": [
+    {
+      "start": "+7d 11:00",
+      "end": "+7d 16:00",
+      "title": "Client meeting",
+      "location": "Koramangala"
+    },
+    {
+      "start": "+8d 10:00",
+      "end": "+8d 15:00",
+      "title": "Client workshop",
+      "location": "Koramangala"
+    }
+  ],
+  "interests": [
+    "food",
+    "cafe",
+    "nightlife"
+  ],
+  "budget": {
+    "amount": 30000,
+    "currency": "INR"
+  },
+  "travel_modes": [
+    "flight",
+    "cab"
+  ],
+  "use_learned_schedule": false
+}
