@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3f3f55"/>
+    </marker>
+    <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d64545"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2f855a"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b7791f"/>
+    </marker>
+    <style>
+      .t { font-size: 15px; font-weight: 700; fill: #1d1d2b; }
+      .s { font-size: 12px; fill: #4a4a60; }
+      .x { font-size: 11px; fill: #5f5f75; }
+      .l { font-size: 11.5px; fill: #3f3f55; font-weight: 600; }
+    </style>
+  </defs>
+  <rect width="1200" height="800" fill="#ffffff"/>
+  <text x="600" y="30" text-anchor="middle" style="font-size:22px;font-weight:800;fill:#1d1d2b">LifePlan AI — multi-agent architecture (LangGraph)</text>
+  <text x="600" y="51" text-anchor="middle" class="s">Hierarchical orchestrator–worker over a shared blackboard · parallel critique round · peer-to-peer consults · event-driven re-planning</text>
+
+  <!-- user / UI -->
+  <rect x="430" y="68" width="340" height="56" rx="12" fill="#f1f1f7" stroke="#9a9ab0"/>
+  <text x="600" y="91" text-anchor="middle" class="t">User · Web UI · REST API (FastAPI)</text>
+  <text x="600" y="111" text-anchor="middle" class="s">PlanRequest · ReplanEvent · live SSE trace stream</text>
+  <line x1="600" y1="124" x2="600" y2="154" stroke="#3f3f55" stroke-width="1.6" marker-end="url(#a)" marker-start="url(#a)"/>
+
+  <!-- coordinator -->
+  <rect x="400" y="156" width="400" height="100" rx="14" fill="#f3ecfe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="600" y="182" text-anchor="middle" class="t">🤖 Adaptive Coordinator Agent (supervisor)</text>
+  <text x="600" y="203" text-anchor="middle" class="s">reads the whole blackboard, then its LLM picks ONE action per turn:</text>
+  <text x="600" y="221" text-anchor="middle" class="s">delegate(agent, task) · request_reviews() · finalize(summary)</text>
+  <text x="600" y="242" text-anchor="middle" class="x">guardrails: step budget · revision limit · no finalize without a draft · degraded mode</text>
+
+  <!-- replan events -->
+  <rect x="860" y="166" width="290" height="80" rx="12" fill="#fdecec" stroke="#d64545"/>
+  <text x="1005" y="191" text-anchor="middle" class="t" style="fill:#b91c1c">🌍 Real-world change events</text>
+  <text x="1005" y="212" text-anchor="middle" class="s">rain · running late · venue closed</text>
+  <text x="1005" y="230" text-anchor="middle" class="s">meeting extended · cancellation</text>
+  <line x1="858" y1="206" x2="802" y2="206" stroke="#d64545" stroke-width="1.6" marker-end="url(#ar)"/>
+  <text x="830" y="198" text-anchor="middle" class="l" style="fill:#d64545">replan</text>
+
+  <!-- review round note -->
+  <rect x="40" y="166" width="310" height="80" rx="12" fill="#fafafe" stroke="#9a9ab0" stroke-dasharray="5 4"/>
+  <text x="195" y="190" text-anchor="middle" class="t">⚖ Review round (parallel)</text>
+  <text x="195" y="210" text-anchor="middle" class="s">request_reviews → Profile, Discovery and</text>
+  <text x="195" y="227" text-anchor="middle" class="s">Logistics critique the draft at the same time</text>
+  <text x="195" y="241" text-anchor="middle" class="x">(LangGraph Send fan-out) → APPROVE / REVISE</text>
+  <line x1="352" y1="206" x2="398" y2="206" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)" marker-start="url(#ap)"/>
+
+  <!-- coordinator -> agents fan -->
+  <path d="M470,256 L155,328" fill="none" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)" marker-start="url(#ap)"/>
+  <path d="M550,256 L450,328" fill="none" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)" marker-start="url(#ap)"/>
+  <path d="M650,256 L745,328" fill="none" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)" marker-start="url(#ap)"/>
+  <path d="M730,256 L1040,328" fill="none" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)" marker-start="url(#ap)"/>
+  <text x="600" y="300" text-anchor="middle" class="l" style="fill:#7c3aed">task ↓   report / critique ↑   (messages on the blackboard)</text>
+
+  <!-- agents row: Profile, Discovery, Planner, Logistics -->
+  <g>
+    <rect x="20" y="330" width="260" height="128" rx="14" fill="#e6f6f4" stroke="#0d9488" stroke-width="2"/>
+    <text x="150" y="356" text-anchor="middle" class="t">🧠 Profile &amp; Availability</text>
+    <text x="150" y="376" text-anchor="middle" class="s">learns the routine from calendar</text>
+    <text x="150" y="392" text-anchor="middle" class="s">history; free windows, commute,</text>
+    <text x="150" y="408" text-anchor="middle" class="s">preferences; critiques clashes</text>
+    <text x="150" y="430" text-anchor="middle" class="x">ICS parser · routine learner · availability</text>
+    <text x="150" y="446" text-anchor="middle" class="x">Nager.Date holidays · preference memory</text>
+  </g>
+  <g>
+    <rect x="315" y="330" width="260" height="128" rx="14" fill="#fdf0e7" stroke="#ea580c" stroke-width="2"/>
+    <text x="445" y="356" text-anchor="middle" class="t">📍 Discovery &amp; Location</text>
+    <text x="445" y="376" text-anchor="middle" class="s">real venues &amp; events near the user,</text>
+    <text x="445" y="392" text-anchor="middle" class="s">weather, alternatives, grounding</text>
+    <text x="445" y="408" text-anchor="middle" class="s">guard (no invented places)</text>
+    <text x="445" y="430" text-anchor="middle" class="x">Geoapify Places / OSM Overpass · Open-Meteo</text>
+    <text x="445" y="446" text-anchor="middle" class="x">Tavily / SerpApi events · Wikipedia</text>
+  </g>
+  <g>
+    <rect x="625" y="330" width="260" height="128" rx="14" fill="#e8f6ec" stroke="#16a34a" stroke-width="2"/>
+    <text x="755" y="356" text-anchor="middle" class="t">📅 Planner &amp; Optimization</text>
+    <text x="755" y="376" text-anchor="middle" class="s">decides priorities &amp; trade-offs;</text>
+    <text x="755" y="392" text-anchor="middle" class="s">time + distance + cost + preferences</text>
+    <text x="755" y="408" text-anchor="middle" class="s">+ opening hours + duration</text>
+    <text x="755" y="430" text-anchor="middle" class="x">schedule solver · constraint checks</text>
+    <text x="755" y="446" text-anchor="middle" class="x">consult_discovery · consult_logistics</text>
+  </g>
+  <g>
+    <rect x="920" y="330" width="260" height="128" rx="14" fill="#e9effd" stroke="#2563eb" stroke-width="2"/>
+    <text x="1050" y="356" text-anchor="middle" class="t">🚗 Travel &amp; Logistics</text>
+    <text x="1050" y="376" text-anchor="middle" class="s">modes, real travel times, feasibility,</text>
+    <text x="1050" y="392" text-anchor="middle" class="s">inter-city legs, flights, hotels,</text>
+    <text x="1050" y="408" text-anchor="middle" class="s">currency; critiques infeasible legs</text>
+    <text x="1050" y="430" text-anchor="middle" class="x">OSRM / Geoapify routing &amp; matrix</text>
+    <text x="1050" y="446" text-anchor="middle" class="x">SerpApi Flights &amp; Hotels · Frankfurter FX</text>
+  </g>
+
+  <!-- peer consults -->
+  <line x1="577" y1="394" x2="623" y2="394" stroke="#16a34a" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#a)" marker-start="url(#a)"/>
+  <line x1="887" y1="394" x2="918" y2="394" stroke="#16a34a" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text x="600" y="478" text-anchor="middle" class="l" style="fill:#16a34a">peer consult</text>
+  <text x="902" y="478" text-anchor="middle" class="l" style="fill:#16a34a">peer consult</text>
+
+  <!-- blackboard -->
+  <rect x="120" y="520" width="960" height="104" rx="14" fill="#fff8e6" stroke="#b7791f" stroke-width="2"/>
+  <text x="600" y="546" text-anchor="middle" class="t">🗂 Shared blackboard = LangGraph state (PlanState)</text>
+  <text x="600" y="568" text-anchor="middle" class="s">request · profile · availability · routine · weather · candidates (verified pool with source ids / URLs)</text>
+  <text x="600" y="586" text-anchor="middle" class="s">logistics (mode, travel matrix, hotel, inter-city legs) · draft · validation (conflicts) · reviews · events</text>
+  <text x="600" y="604" text-anchor="middle" class="s">messages: the inter-agent channel — every request, report, critique, consult and conflict</text>
+  <line x1="150" y1="460" x2="200" y2="518" stroke="#b7791f" stroke-width="1.4" marker-end="url(#ab)" marker-start="url(#ab)"/>
+  <line x1="445" y1="460" x2="445" y2="518" stroke="#b7791f" stroke-width="1.4" marker-end="url(#ab)" marker-start="url(#ab)"/>
+  <line x1="755" y1="460" x2="755" y2="518" stroke="#b7791f" stroke-width="1.4" marker-end="url(#ab)" marker-start="url(#ab)"/>
+  <line x1="1050" y1="460" x2="1000" y2="518" stroke="#b7791f" stroke-width="1.4" marker-end="url(#ab)" marker-start="url(#ab)"/>
+  <text x="285" y="500" class="l" style="fill:#b7791f">read / write</text>
+
+  <!-- output -->
+  <rect x="300" y="664" width="600" height="84" rx="14" fill="#e8f6ee" stroke="#2f855a" stroke-width="2"/>
+  <text x="600" y="690" text-anchor="middle" class="t">🏁 finalize → PlanResult + Execution Trace</text>
+  <text x="600" y="711" text-anchor="middle" class="s">timeline of real places with sources · totals vs budget · weather · conflicts and how they</text>
+  <text x="600" y="728" text-anchor="middle" class="s">were resolved · alternatives · every message / tool / LLM call timestamped (JSON + Markdown)</text>
+  <text x="612" y="648" class="l" style="fill:#2f855a">Coordinator: finalize(summary)</text>
+  <line x1="600" y1="626" x2="600" y2="662" stroke="#2f855a" stroke-width="1.4" marker-end="url(#ag)"/>
+
+  <text x="600" y="784" text-anchor="middle" class="x">Every agent has its own LLM (per-agent model) running a ReAct tool loop as a LangGraph subgraph. LLM calls fall back across providers (Gemini → Groq);</text>
+  <text x="600" y="797" text-anchor="middle" class="x">tools fall back across APIs (Geoapify → OpenStreetMap → transparent estimate); if no LLM is reachable each agent has a deterministic fallback.</text>
+</svg>

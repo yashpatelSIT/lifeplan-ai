@@ -1,0 +1,97 @@
+{
+  "$defs": {
+    "BusyBlock": {
+      "properties": {
+        "start": {
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "format": "date-time",
+          "title": "End",
+          "type": "string"
+        },
+        "title": {
+          "default": "Busy",
+          "title": "Title",
+          "type": "string"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "BusyBlock",
+      "type": "object"
+    }
+  },
+  "description": "A real-world change that forces the agents to adapt an existing plan.",
+  "properties": {
+    "plan_id": {
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "event": {
+      "enum": [
+        "weather",
+        "delay",
+        "cancellation",
+        "schedule_change",
+        "user_feedback",
+        "closed"
+      ],
+      "title": "Event",
+      "type": "string"
+    },
+    "details": {
+      "maxLength": 1000,
+      "minLength": 3,
+      "title": "Details",
+      "type": "string"
+    },
+    "item_index": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Which itinerary item is affected, if known",
+      "title": "Item Index"
+    },
+    "new_busy_block": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BusyBlock"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "plan_id",
+    "event",
+    "details"
+  ],
+  "title": "ReplanEvent",
+  "type": "object"
+}

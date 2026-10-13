@@ -1,0 +1,47 @@
+{
+  "properties": {
+    "plan_id": {
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "rating": {
+      "maximum": 5,
+      "minimum": 1,
+      "title": "Rating",
+      "type": "integer"
+    },
+    "liked": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Liked",
+      "type": "array"
+    },
+    "disliked": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Disliked",
+      "type": "array"
+    },
+    "comment": {
+      "anyOf": [
+        {
+          "maxLength": 1000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Comment"
+    }
+  },
+  "required": [
+    "plan_id",
+    "rating"
+  ],
+  "title": "FeedbackRequest",
+  "type": "object"
+}

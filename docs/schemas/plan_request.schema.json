@@ -1,0 +1,298 @@
+{
+  "$defs": {
+    "Budget": {
+      "properties": {
+        "amount": {
+          "description": "Total budget for the whole plan",
+          "exclusiveMinimum": 0,
+          "title": "Amount",
+          "type": "number"
+        },
+        "currency": {
+          "default": "INR",
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Currency",
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount"
+      ],
+      "title": "Budget",
+      "type": "object"
+    },
+    "BusyBlock": {
+      "properties": {
+        "start": {
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "format": "date-time",
+          "title": "End",
+          "type": "string"
+        },
+        "title": {
+          "default": "Busy",
+          "title": "Title",
+          "type": "string"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "BusyBlock",
+      "type": "object"
+    },
+    "Coordinates": {
+      "properties": {
+        "lat": {
+          "maximum": 90,
+          "minimum": -90,
+          "title": "Lat",
+          "type": "number"
+        },
+        "lon": {
+          "maximum": 180,
+          "minimum": -180,
+          "title": "Lon",
+          "type": "number"
+        }
+      },
+      "required": [
+        "lat",
+        "lon"
+      ],
+      "title": "Coordinates",
+      "type": "object"
+    }
+  },
+  "description": "What the user asks LifePlan AI to do.",
+  "properties": {
+    "query": {
+      "description": "Natural-language request",
+      "maxLength": 1500,
+      "minLength": 3,
+      "title": "Query",
+      "type": "string"
+    },
+    "mode": {
+      "default": "auto",
+      "enum": [
+        "auto",
+        "now",
+        "free_time",
+        "evening",
+        "day",
+        "weekend",
+        "local_outing",
+        "explore",
+        "domestic_trip",
+        "international_trip",
+        "business_trip"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "location": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Where the user is / starts from",
+      "title": "Location"
+    },
+    "coordinates": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Coordinates"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "destination": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Trip destination (trips only)",
+      "title": "Destination"
+    },
+    "start": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Start of the planning window (local time)",
+      "title": "Start"
+    },
+    "end": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "End of the planning window (local time)",
+      "title": "End"
+    },
+    "budget": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Budget"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "interests": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Interests",
+      "type": "array"
+    },
+    "travel_modes": {
+      "items": {
+        "enum": [
+          "walk",
+          "transit",
+          "cab",
+          "drive",
+          "bike",
+          "train",
+          "flight"
+        ],
+        "type": "string"
+      },
+      "title": "Travel Modes",
+      "type": "array"
+    },
+    "party_size": {
+      "default": 1,
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Party Size",
+      "type": "integer"
+    },
+    "pace": {
+      "default": "balanced",
+      "enum": [
+        "relaxed",
+        "balanced",
+        "packed"
+      ],
+      "title": "Pace",
+      "type": "string"
+    },
+    "busy_blocks": {
+      "items": {
+        "$ref": "#/$defs/BusyBlock"
+      },
+      "maxItems": 200,
+      "title": "Busy Blocks",
+      "type": "array"
+    },
+    "calendar_ics": {
+      "anyOf": [
+        {
+          "maxLength": 500000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Raw .ics calendar text",
+      "title": "Calendar Ics"
+    },
+    "use_learned_schedule": {
+      "default": true,
+      "description": "Let the Profile agent predict busy time from history",
+      "title": "Use Learned Schedule",
+      "type": "boolean"
+    },
+    "profile_id": {
+      "default": "demo",
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_\\-]+$",
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "timezone": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Timezone"
+    },
+    "now": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Override 'current time' (testing / demos)",
+      "title": "Now"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "title": "PlanRequest",
+  "type": "object"
+}
