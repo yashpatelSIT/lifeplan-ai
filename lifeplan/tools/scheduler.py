@@ -4,10 +4,12 @@ The LLM Planner decides *what* matters (which candidates, priorities, pace, trav
 must-include items); this solver does the combinatorial part reliably:
 time windows + travel time + opening hours + activity duration + budget + weather.
 
-Greedy insertion with a value function:
-    value = 100*priority + must_include_bonus - 0.8*travel_min - 0.3*wait_min - weather_penalty
-At each step it picks the feasible candidate with the highest value, so it naturally
-prefers nearby, open, high-priority places and keeps time to get back home.
+Two phases per free window:
+  1. anchor fixed-time events (shows, workshops) that fit the window incl. travel there and back;
+  2. greedily fill the gaps before/between/after the anchors using
+         value = 100*priority + must_include_bonus - 0.8*travel_min - 0.3*wait_min - weather_penalty
+     picking at each step the feasible candidate (open long enough, reachable, within budget, still able
+     to reach the next anchor / get home in time) with the highest value.
 """
 
 from __future__ import annotations
@@ -106,65 +108,103 @@ def build_schedule(
     total_travel = 0.0
     total_activity = 0.0
 
+    def duration_of(c: dict) -> int:
+        if c.get("fixed_end") and c.get("fixed_start"):
+            return int((parse_dt(c["fixed_end"]) - parse_dt(c["fixed_start"])).total_seconds() // 60)
+        return int(c.get("duration_min") or 60)
+
     for w in windows:
+        back_target = w.end_at or (w.base if w.return_to_base else None)
+
+        # Phase 1 — anchor fixed-time events (shows, matches, workshops) that fit this window.
+        anchors: list[dict] = []
+        fixed = sorted((c for c in remaining.values() if c.get("fixed_start")),
+                       key=lambda c: -(float(c.get("priority", 0.5)) + (1 if c["id"] in must else 0)))
+        for c in fixed:
+            fs, fe = parse_dt(c["fixed_start"]), parse_dt(c["fixed_end"] or c["fixed_start"])
+            lead = travel(w.base, c)["minutes"]
+            back = travel(c, back_target)["minutes"] if back_target else 0
+            if fs - timedelta(minutes=lead) < w.start or fe + timedelta(minutes=back) > w.end:
+                continue
+            if any(fs < parse_dt(a["fixed_end"]) + timedelta(minutes=travel(a, c)["minutes"])
+                   and parse_dt(a["fixed_start"]) < fe + timedelta(minutes=travel(c, a)["minutes"]) for a in anchors):
+                continue
+            if budget is not None and c["id"] not in must and \
+                    spent + sum(float(a.get("est_cost") or 0) for a in anchors) + float(c.get("est_cost") or 0) > budget:
+                continue
+            anchors.append(c)
+        anchors.sort(key=lambda c: c["fixed_start"])
+
+        # Phase 2 — greedily fill the gaps before/between/after the anchors.
         here = w.base
         t = w.start
         stops: list[Stop] = []
-        meals = 0
-        snacks = 0
+        meals = snacks = 0
         last_meal_end: Optional[datetime] = None
-        while len(stops) < max_stops_per_window:
-            best = None
-            for cid, c in remaining.items():
-                duration = int(c.get("duration_min") or 60)
-                if c.get("fixed_end") and c.get("fixed_start"):
-                    duration = int((parse_dt(c["fixed_end"]) - parse_dt(c["fixed_start"])).total_seconds() // 60)
-                is_meal = c.get("kind") == "meal"
-                if is_meal and meals >= max_meals_per_window:
-                    continue
-                if c.get("kind") == "snack" and snacks >= 1:
-                    continue
-                leg = travel(here, c)
-                arrive = _ceil5(t + timedelta(minutes=leg["minutes"] + (buffer if stops else 0)))
-                start = _earliest_open_start(c, arrive, duration)
-                if start is None:
-                    continue
-                if is_meal and last_meal_end and (start - last_meal_end).total_seconds() / 60 < MEAL_GAP_MIN:
-                    continue
-                end = start + timedelta(minutes=duration)
-                back_target = w.end_at or (w.base if w.return_to_base else None)
-                back = travel(c, back_target)["minutes"] if back_target else 0
-                if end + timedelta(minutes=back) > w.end:
-                    continue
-                cost = float(c.get("est_cost") or 0) + float(leg.get("cost") or 0)
-                if budget is not None and spent + cost > budget and cid not in must:
-                    continue
-                wait = (start - arrive).total_seconds() / 60
-                if wait > 90 and cid not in must:
-                    continue
-                value = 100 * float(c.get("priority", 0.5)) + (400 if cid in must else 0)
-                value -= 0.8 * leg["minutes"] + 0.3 * wait
-                if not c.get("indoor", True):
-                    hours = {fmt(start.replace(minute=0)), fmt(end.replace(minute=0))}
-                    if hours & wet:
-                        value -= 60
-                if best is None or value > best[0]:
-                    best = (value, c, start, end, leg, cost)
-            if best is None:
-                break
-            _, c, start, end, leg, cost = best
-            stops.append(Stop(c, start, end, leg["minutes"], leg.get("km") or 0, leg.get("mode", "?"),
-                              leg.get("source", "?"), float(leg.get("cost") or 0)))
-            spent += cost
-            total_travel += leg["minutes"]
-            total_activity += (end - start).total_seconds() / 60
-            remaining.pop(c["id"])
-            if c.get("kind") == "meal":
-                meals += 1
-                last_meal_end = end
-            elif c.get("kind") == "snack":
-                snacks += 1
-            here, t = c, end
+        for nxt in anchors + [None]:
+            seg_end = parse_dt(nxt["fixed_start"]) if nxt else w.end
+            seg_place = nxt if nxt else back_target
+            while len(stops) < max_stops_per_window:
+                best = None
+                for cid, c in remaining.items():
+                    if c.get("fixed_start"):
+                        continue
+                    duration = duration_of(c)
+                    is_meal = c.get("kind") == "meal"
+                    if is_meal and meals >= max_meals_per_window:
+                        continue
+                    if c.get("kind") == "snack" and snacks >= 1:
+                        continue
+                    leg = travel(here, c)
+                    arrive = _ceil5(t + timedelta(minutes=leg["minutes"] + (buffer if stops else 0)))
+                    start = _earliest_open_start(c, arrive, duration)
+                    if start is None:
+                        continue
+                    if is_meal and last_meal_end and (start - last_meal_end).total_seconds() / 60 < MEAL_GAP_MIN:
+                        continue
+                    end = start + timedelta(minutes=duration)
+                    onward = travel(c, seg_place)["minutes"] if seg_place else 0
+                    if end + timedelta(minutes=onward + (buffer if nxt else 0)) > seg_end:
+                        continue
+                    cost = float(c.get("est_cost") or 0) + float(leg.get("cost") or 0)
+                    if budget is not None and spent + cost > budget and cid not in must:
+                        continue
+                    wait = (start - arrive).total_seconds() / 60
+                    if wait > 90 and cid not in must:
+                        continue
+                    value = 100 * float(c.get("priority", 0.5)) + (400 if cid in must else 0)
+                    value -= 0.8 * leg["minutes"] + 0.3 * wait
+                    if not c.get("indoor", True):
+                        hours = {fmt(start.replace(minute=0)), fmt(end.replace(minute=0))}
+                        if hours & wet:
+                            value -= 60
+                    if best is None or value > best[0]:
+                        best = (value, c, start, end, leg, cost)
+                if best is None:
+                    break
+                _, c, start, end, leg, cost = best
+                stops.append(Stop(c, start, end, leg["minutes"], leg.get("km") or 0, leg.get("mode", "?"),
+                                  leg.get("source", "?"), float(leg.get("cost") or 0)))
+                spent += cost
+                total_travel += leg["minutes"]
+                total_activity += (end - start).total_seconds() / 60
+                remaining.pop(c["id"])
+                if c.get("kind") == "meal":
+                    meals += 1
+                    last_meal_end = end
+                elif c.get("kind") == "snack":
+                    snacks += 1
+                here, t = c, end
+            if nxt:
+                leg = travel(here, nxt)
+                fs, fe = parse_dt(nxt["fixed_start"]), parse_dt(nxt["fixed_end"])
+                stops.append(Stop(nxt, fs, fe, leg["minutes"], leg.get("km") or 0, leg.get("mode", "?"),
+                                  leg.get("source", "?"), float(leg.get("cost") or 0)))
+                spent += float(nxt.get("est_cost") or 0) + float(leg.get("cost") or 0)
+                total_travel += leg["minutes"]
+                total_activity += (fe - fs).total_seconds() / 60
+                remaining.pop(nxt["id"], None)
+                here, t = nxt, fe
 
         items = []
         prev_end = w.start
@@ -189,7 +229,6 @@ def build_schedule(
                 "notes": s.cand.get("why"),
             })
             prev_end = s.end
-        back_target = w.end_at or (w.base if w.return_to_base else None)
         if stops and back_target:
             last = stops[-1].cand
             leg = travel(last, back_target)
