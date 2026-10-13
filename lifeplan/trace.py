@@ -13,11 +13,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from lifeplan.config import redact
+
 MAX_FIELD = 4000
 
 
 def _clip(value: Any, limit: int = MAX_FIELD) -> Any:
     if isinstance(value, str):
+        value = redact(value)
         return value if len(value) <= limit else value[:limit] + f"… [+{len(value) - limit} chars]"
     if isinstance(value, dict):
         return {k: _clip(v, limit) for k, v in value.items()}

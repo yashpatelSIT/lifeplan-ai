@@ -17,7 +17,7 @@ from typing import Any, Optional
 
 import requests
 
-from lifeplan.config import get_settings
+from lifeplan.config import get_settings, redact
 
 log = logging.getLogger("lifeplan.http")
 
@@ -26,7 +26,7 @@ class ExternalAPIError(RuntimeError):
     """Raised when an external API fails after retries. Tools catch this and fall back."""
 
     def __init__(self, service: str, message: str, status: Optional[int] = None):
-        super().__init__(f"{service}: {message}")
+        super().__init__(redact(f"{service}: {message}"))
         self.service = service
         self.status = status
 

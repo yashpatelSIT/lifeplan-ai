@@ -17,7 +17,7 @@ from typing import Any, Callable, Optional, Sequence
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 
-from lifeplan.config import get_settings
+from lifeplan.config import get_settings, redact
 from lifeplan.trace import Trace
 
 
@@ -173,7 +173,7 @@ def invoke(agent: str, messages: Sequence[BaseMessage], trace: Trace, tools: Opt
             trace.llm_call(agent, spec, dt, _usage(msg), _text(msg), msg.tool_calls, fallback_used=i > 0)
             return msg
         except Exception as exc:  # noqa: BLE001 - provider SDKs raise many different types
-            err = f"{type(exc).__name__}: {str(exc)[:300]}"
+            err = redact(f"{type(exc).__name__}: {str(exc)[:300]}")
             errors.append(f"{spec} -> {err}")
             trace.emit("llm_error", agent, err, model=spec, will_fallback=i + 1 < len(model_chain(agent)))
     raise LLMUnavailable("; ".join(errors) or "no LLM configured")

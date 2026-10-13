@@ -1,7 +1,9 @@
 name: Live agent run (real APIs)
 
-# Runs the real multi-agent system against live LLMs and APIs using the repository secrets,
-# and uploads the execution trace as a build artifact. Trigger it manually from the Actions tab.
+# Runs the real multi-agent system against live LLMs and APIs using the repository secrets.
+# Results (key check report, execution trace JSON + Markdown, plan result) are uploaded as an artifact
+# AND published to the `e2e-results` branch so they can be linked from the CA3 submission.
+# All API keys are redacted from every file before it is written.
 on:
   workflow_dispatch:
     inputs:
@@ -12,10 +14,13 @@ on:
         description: "Optional replan event, e.g. 'weather|Heavy rain started' (leave empty to skip)"
         default: ""
 
+permissions:
+  contents: write
+
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -31,19 +36,58 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Check keys
-        run: python scripts/check_keys.py
+        continue-on-error: true
+        run: python scripts/check_keys.py out/check_keys.txt
       - name: Run agents
+        continue-on-error: true
         env:
           REQ: ${{ inputs.request }}
           EV: ${{ inputs.replan }}
         run: |
+          set -o pipefail
+          mkdir -p out
           if [ -n "$EV" ]; then
-            python scripts/run_demo.py "$REQ" --out out --replan "${EV%%|*}" "${EV#*|}"
+            python scripts/run_demo.py "$REQ" --out out --replan "${EV%%|*}" "${EV#*|}" 2>&1 | tee out/console.txt
           else
-            python scripts/run_demo.py "$REQ" --out out
+            python scripts/run_demo.py "$REQ" --out out 2>&1 | tee out/console.txt
           fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: execution-trace
           path: out/
+      - name: Publish results to the e2e-results branch
+        if: always()
+        env:
+          REQ: ${{ inputs.request }}
+        run: |
+          python - <<'PY'
+          import os, pathlib
+          secrets = [os.environ.get(k, "") for k in ("GOOGLE_API_KEY", "GROQ_API_KEY", "GEOAPIFY_API_KEY",
+                                                     "TAVILY_API_KEY", "SERPAPI_API_KEY")]
+          for p in pathlib.Path("out").rglob("*"):
+              if p.is_file():
+                  t = p.read_text(encoding="utf-8", errors="replace")
+                  for s in secrets:
+                      if s and len(s) >= 8:
+                          t = t.replace(s, "***")
+                  p.write_text(t, encoding="utf-8")
+          PY
+          mkdir -p /tmp/results && cp -r out/. /tmp/results/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -rf out
+          git fetch origin e2e-results || true
+          if git rev-parse --verify origin/e2e-results >/dev/null 2>&1; then
+            git checkout -f -B e2e-results origin/e2e-results
+          else
+            git checkout --orphan e2e-results
+            git rm -rq --cached . || true
+            find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          fi
+          mkdir -p "runs/${GITHUB_RUN_NUMBER}" latest
+          cp -r /tmp/results/. "runs/${GITHUB_RUN_NUMBER}/"
+          rm -rf latest && mkdir latest && cp -r /tmp/results/. latest/
+          git add -A
+          git commit -qm "Live run #${GITHUB_RUN_NUMBER}: ${REQ}" || echo "nothing to commit"
+          git push -f origin e2e-results

@@ -16,25 +16,37 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import requests  # noqa: E402
 
-from lifeplan.config import get_settings  # noqa: E402
+from lifeplan.config import get_settings, redact  # noqa: E402
 
 s = get_settings()
 rows: list[tuple[str, str, str]] = []
+
+
+def shape(value: str) -> str:
+    """Describe a key without revealing it (helps spot copy-paste mistakes)."""
+    issues = []
+    if value != value.strip():
+        issues.append("leading/trailing whitespace")
+    if value[:1] in "\"'" or value[-1:] in "\"'":
+        issues.append("wrapped in quotes")
+    return f"len={len(value)}" + (f", PROBLEM: {', '.join(issues)}" if issues else "")
 
 
 def check(name: str, fn) -> None:
     t0 = time.time()
     try:
         detail = fn()
-        rows.append((name, "OK", f"{detail} ({int((time.time() - t0) * 1000)} ms)"))
+        rows.append((name, "OK", redact(f"{detail} ({int((time.time() - t0) * 1000)} ms)")))
     except Exception as exc:  # noqa: BLE001
-        rows.append((name, "FAIL", f"{type(exc).__name__}: {str(exc)[:160]}"))
+        body = getattr(getattr(exc, "response", None), "text", "") or ""
+        rows.append((name, "FAIL", redact(f"{type(exc).__name__}: {str(exc)[:300]} {body[:300]}")))
 
 
 def gemini():
-    r = requests.get("https://generativelanguage.googleapis.com/v1beta/models", params={"key": s.google_api_key,
-                                                                                         "pageSize": 200}, timeout=20)
-    r.raise_for_status()
+    r = requests.get("https://generativelanguage.googleapis.com/v1beta/models", params={"pageSize": 200},
+                     headers={"x-goog-api-key": s.google_api_key}, timeout=20)
+    if r.status_code >= 400:
+        raise RuntimeError(f"model list HTTP {r.status_code}: {r.text[:300]}")
     names = [m["name"].split("/")[-1] for m in r.json().get("models", [])
              if "generateContent" in m.get("supportedGenerationMethods", []) and "flash" in m["name"]]
     from langchain_core.messages import HumanMessage
@@ -42,11 +54,17 @@ def gemini():
     from lifeplan import llm
 
     configured = [m for m in s.agent_models.values() if m.startswith("gemini:")]
-    replies = []
+    replies, failed = [], []
     for spec in sorted(set(configured)):
-        msg = llm.get_model(spec).invoke([HumanMessage("Reply with the single word: ready")])
-        replies.append(f"{spec.split(':', 1)[1]} -> '{llm.text_of(msg).strip()[:12]}'")
-    return f"{'; '.join(replies) or 'not used as primary'} | flash models available: {', '.join(sorted(names)[:8])}"
+        try:
+            msg = llm.get_model(spec).invoke([HumanMessage("Reply with the single word: ready")])
+            replies.append(f"{spec.split(':', 1)[1]} -> '{llm.text_of(msg).strip()[:12]}'")
+        except Exception as exc:  # noqa: BLE001
+            failed.append(f"{spec.split(':', 1)[1]} FAILED {type(exc).__name__}: {str(exc)[:200]}")
+    info = f"{'; '.join(replies + failed) or 'not used as primary'} | flash models available: {', '.join(sorted(names))}"
+    if failed and not replies:
+        raise RuntimeError(info)
+    return info
 
 
 def groq():
@@ -96,6 +114,9 @@ def osrm():
     return f"Shivajinagar -> Lavale {r.json()['routes'][0]['duration'] / 60:.0f} min by car"
 
 
+print("Key shapes:", {k: shape(v) for k, v in {"GOOGLE_API_KEY": s.google_api_key, "GROQ_API_KEY": s.groq_api_key,
+                                              "GEOAPIFY_API_KEY": s.geoapify_api_key, "TAVILY_API_KEY": s.tavily_api_key,
+                                              "SERPAPI_API_KEY": s.serpapi_api_key}.items() if v})
 if s.google_api_key:
     check("Gemini (LLM)", gemini)
 else:
@@ -114,9 +135,13 @@ check("Open-Meteo (no key)", open_meteo)
 check("OSRM routing (no key)", osrm)
 
 width = max(len(r[0]) for r in rows)
-print(f"\nPrimary models: {s.agent_models}\nFallbacks: {s.llm_fallbacks}\n")
-for name, status, detail in rows:
-    print(f"{name:<{width}}  {status:<7}  {detail}")
+lines = [f"Primary models: {s.agent_models}", f"Fallbacks: {s.llm_fallbacks}", ""]
+lines += [f"{name:<{width}}  {status:<7}  {detail}" for name, status, detail in rows]
 ok_llm = any(r[1] == "OK" for r in rows if "(LLM)" in r[0])
-print("\n" + ("Ready: at least one LLM works." if ok_llm else "No working LLM key — the agents cannot run."))
+lines.append("\n" + ("Ready: at least one LLM works." if ok_llm else "No working LLM key — the agents cannot run."))
+report = redact("\n".join(lines))
+print(report)
+if len(sys.argv) > 1:  # optional: write the report to a file (used by the GitHub workflow)
+    Path(sys.argv[1]).parent.mkdir(parents=True, exist_ok=True)
+    Path(sys.argv[1]).write_text(report + "\n", encoding="utf-8")
 sys.exit(0 if ok_llm else 1)

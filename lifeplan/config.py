@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -147,3 +148,18 @@ def build_settings() -> Settings:
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return build_settings()
+
+
+_SECRET_PARAM = re.compile(r"((?:api_?key|apiKey|key|token)=)[^&\s'\"]+", re.I)
+
+
+def redact(text: str) -> str:
+    """Remove API keys from any text that may be logged, traced or shown (error messages, URLs)."""
+    if not isinstance(text, str) or not text:
+        return text
+    s = get_settings()
+    for secret in (s.google_api_key, s.groq_api_key, s.openai_api_key, s.geoapify_api_key, s.tavily_api_key,
+                   s.serpapi_api_key):
+        if secret and len(secret) >= 8:
+            text = text.replace(secret, "***")
+    return _SECRET_PARAM.sub(r"\1***", text)

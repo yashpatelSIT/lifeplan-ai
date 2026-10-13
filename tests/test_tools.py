@@ -177,3 +177,16 @@ def test_validator_detects_three_way_conflict():
 
     venue_issues = validator.check_venues(plan, {"evt:1": {"id": "evt:1", "fixed_start": "x"}}, set())
     assert any(i["type"] == "UNVERIFIED_PLACE" for i in venue_issues)  # 'x' is not in the verified pool
+
+
+def test_secrets_are_redacted_from_errors_and_traces(monkeypatch):
+    from lifeplan.config import get_settings, redact
+    from lifeplan.trace import Trace
+
+    monkeypatch.setattr(get_settings(), "geoapify_api_key", "SECRET-GEO-123456")
+    msg = "ConnectionError: url=/v1/geocode/search?text=Pune&apiKey=SECRET-GEO-123456&limit=1"
+    assert "SECRET-GEO" not in redact(msg)
+    assert "api_key=***" in redact("https://serpapi.com/search.json?api_key=abcdef123456")
+    tr = Trace()
+    tr.emit("llm_error", "discovery", "boom SECRET-GEO-123456", detail={"url": "x?key=SECRET-GEO-123456"})
+    assert "SECRET-GEO" not in str(tr.to_dict())
