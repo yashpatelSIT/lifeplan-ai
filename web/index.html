@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LifePlan AI</title>
+  <meta name="description" content="Multi-agent AI personal planner for time, activities and travel">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235b5bd6'/><path d='M9 22V10h3v9h7v3z' fill='white'/><circle cx='22' cy='11' r='3' fill='%23ffd166'/></svg>">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">L</div>
+    <div>
+      <h1>LifePlan AI</h1>
+      <p>Five AI agents plan your free time, days and trips — together.</p>
+    </div>
+  </div>
+  <div id="health" class="health"></div>
+</header>
+
+<main class="layout">
+  <!-- ------------------------------------------------------------ request form -->
+  <section class="card form-card">
+    <h2>What should we plan?</h2>
+    <div id="samples" class="chips samples"></div>
+
+    <form id="plan-form" autocomplete="off">
+      <label class="full">Your request
+        <textarea id="query" rows="3" required minlength="3"
+          placeholder="e.g. I'm free after my meeting tonight — want live comedy and a good dinner under ₹1500"></textarea>
+      </label>
+
+      <label>Plan type
+        <select id="mode">
+          <option value="auto">Auto-detect</option>
+          <option value="now">What can I do right now?</option>
+          <option value="free_time">A few free hours</option>
+          <option value="evening">Evening</option>
+          <option value="day">Full day</option>
+          <option value="weekend">Weekend</option>
+          <option value="local_outing">Local outing</option>
+          <option value="explore">Explore near me</option>
+          <option value="domestic_trip">Domestic trip</option>
+          <option value="international_trip">International vacation</option>
+          <option value="business_trip">Business trip</option>
+        </select>
+      </label>
+      <label>Starting location
+        <div class="row">
+          <input id="location" value="Shivajinagar, Pune" required>
+          <button type="button" id="geo-btn" class="icon-btn" title="Use my current location">◎</button>
+        </div>
+      </label>
+      <label id="dest-wrap" class="hidden">Destination
+        <input id="destination" placeholder="e.g. Goa, Jaipur, Tokyo">
+      </label>
+      <label>From <input id="start" type="datetime-local"></label>
+      <label>To <input id="end" type="datetime-local"></label>
+      <label>Budget
+        <div class="row">
+          <input id="budget" type="number" min="0" step="50" placeholder="1500">
+          <select id="currency" class="cur"><option>INR</option><option>USD</option><option>EUR</option><option>GBP</option><option>JPY</option><option>AED</option><option>SGD</option><option>THB</option></select>
+        </div>
+      </label>
+      <label>People <input id="party" type="number" min="1" max="20" value="1"></label>
+
+      <div class="full">
+        <span class="label">Interests</span>
+        <div id="interests" class="chips toggle"></div>
+      </div>
+      <div class="full">
+        <span class="label">Travel modes</span>
+        <div id="modes" class="chips toggle"></div>
+      </div>
+      <label>Pace
+        <select id="pace"><option value="relaxed">Relaxed</option><option value="balanced" selected>Balanced</option><option value="packed">Packed</option></select>
+      </label>
+      <label>Calendar (.ics)
+        <input id="ics" type="file" accept=".ics,text/calendar">
+      </label>
+      <label class="check full"><input id="learned" type="checkbox" checked> Let the Profile agent learn my routine from calendar history (demo calendar if none uploaded)</label>
+
+      <details class="full busy-box">
+        <summary>Add busy times manually</summary>
+        <div id="busy-list"></div>
+        <button type="button" id="add-busy" class="ghost">+ Add busy block</button>
+      </details>
+
+      <button id="submit" class="primary full" type="submit">Plan it with 5 agents →</button>
+    </form>
+  </section>
+
+  <!-- ------------------------------------------------------------ results -->
+  <section class="card out-card">
+    <div class="agents-bar" id="agents-bar">
+      <div class="agent" data-agent="coordinator"><span>🤖</span>Coordinator</div>
+      <div class="agent" data-agent="profile"><span>🧠</span>Profile</div>
+      <div class="agent" data-agent="discovery"><span>📍</span>Discovery</div>
+      <div class="agent" data-agent="logistics"><span>🚗</span>Logistics</div>
+      <div class="agent" data-agent="planner"><span>📅</span>Planner</div>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-tab="live">Agents (live)</button>
+      <button class="tab" data-tab="plan">Plan</button>
+      <button class="tab" data-tab="map">Map</button>
+      <button class="tab" data-tab="trace">Trace</button>
+    </nav>
+
+    <div class="tab-body" id="tab-live">
+      <div id="status-line" class="status-line">Pick a scenario or describe what you want, then press <b>Plan it</b>.</div>
+      <label class="check small"><input id="show-llm" type="checkbox"> show raw LLM calls</label>
+      <div id="feed" class="feed"></div>
+    </div>
+
+    <div class="tab-body hidden" id="tab-plan">
+      <div id="plan-empty" class="empty">No plan yet.</div>
+      <div id="plan" class="hidden">
+        <div class="plan-head">
+          <span id="plan-status" class="badge"></span>
+          <p id="plan-summary"></p>
+        </div>
+        <div id="totals" class="totals"></div>
+        <div id="weather" class="weather"></div>
+        <div id="timeline"></div>
+        <div id="conflicts"></div>
+        <div id="warnings"></div>
+        <div id="alternatives"></div>
+        <div class="replan">
+          <h3>Something changed? Let the agents adapt the plan</h3>
+          <div class="row wrap">
+            <button class="ghost" data-replan="weather">🌧️ It's raining</button>
+            <button class="ghost" data-replan="delay">⏰ I'm running 45 min late</button>
+            <button class="ghost" data-replan="closed">🚫 A venue is closed</button>
+            <button class="ghost" data-replan="schedule_change">📆 My meeting got extended</button>
+          </div>
+          <div class="row wrap">
+            <select id="replan-item"></select>
+            <input id="replan-text" placeholder="Describe the change (optional)">
+          </div>
+        </div>
+        <div class="feedback">
+          <h3>Rate this plan (the Profile agent learns from it)</h3>
+          <div class="row wrap">
+            <select id="rating"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
+            <input id="liked" placeholder="liked categories, e.g. food, museum">
+            <input id="disliked" placeholder="disliked, e.g. nightlife">
+            <button id="send-feedback" class="ghost">Send feedback</button>
+          </div>
+          <div id="feedback-out" class="muted"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-body hidden" id="tab-map"><div id="map"></div></div>
+
+    <div class="tab-body hidden" id="tab-trace">
+      <div id="trace-stats" class="totals"></div>
+      <p class="muted">Every message, tool call and LLM call of the run is recorded with timestamps — this is the
+        execution trace submitted as evidence of genuine multi-agent collaboration.</p>
+      <div class="row wrap">
+        <a id="dl-json" class="ghost btn disabled" download>Download trace (JSON)</a>
+        <a id="dl-md" class="ghost btn disabled" download>Download trace (Markdown)</a>
+        <a class="ghost btn" href="/docs" target="_blank">API docs</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  Data: OpenStreetMap contributors · Geoapify · Open-Meteo · Tavily · SerpApi · Frankfurter. Costs marked ~ are estimates.
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
