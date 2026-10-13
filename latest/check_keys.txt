@@ -1,0 +1,12 @@
+Primary models: {'coordinator': 'gemini:gemini-flash-latest', 'planner': 'gemini:gemini-flash-latest', 'discovery': 'gemini:gemini-flash-lite-latest', 'logistics': 'gemini:gemini-flash-lite-latest', 'profile': 'gemini:gemini-flash-lite-latest'}
+Fallbacks: ['groq:openai/gpt-oss-120b']
+
+Gemini (LLM)           FAIL     RuntimeError: gemini-flash-latest FAILED GoogleAPIError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}; gemini-flash-lite-latest FAILED GoogleAPIError: 503 UNAVAILAB 
+Groq (LLM)             OK       openai/gpt-oss-120b replied 'ready' (568 ms)
+Geoapify               OK       geocoded Pune -> 18.533,73.851 (899 ms)
+Tavily                 OK       1 result(s) (1433 ms)
+SerpApi (optional)     OK       plan=Free Plan, searches left this month=250 (98 ms)
+Open-Meteo (no key)    OK       29.4 °C in Pune now (261 ms)
+OSRM routing (no key)  OK       Shivajinagar -> Lavale 21 min by car (609 ms)
+
+Ready: at least one LLM works.

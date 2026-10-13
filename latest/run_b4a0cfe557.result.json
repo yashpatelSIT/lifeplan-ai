@@ -1,0 +1,257 @@
+{
+  "plan_id": "plan_6023547c78",
+  "run_id": "run_b4a0cfe557",
+  "status": "partial",
+  "mode": "free_time",
+  "summary": "Planned 2 stops.",
+  "timezone": "Asia/Kolkata",
+  "days": [
+    {
+      "date": "2026-10-13",
+      "items": [
+        {
+          "start": "2026-10-13T20:20",
+          "end": "2026-10-13T21:50",
+          "kind": "busy",
+          "title": "Project meeting (office)",
+          "place": null,
+          "candidate_id": null,
+          "cost": null,
+          "travel": null,
+          "notes": null
+        },
+        {
+          "start": "2026-10-13T21:50",
+          "end": "2026-10-13T22:35",
+          "kind": "busy",
+          "title": "Commute after Project meeting (office)",
+          "place": null,
+          "candidate_id": null,
+          "cost": null,
+          "travel": null,
+          "notes": null
+        },
+        {
+          "start": "2026-10-13T22:38",
+          "end": "2026-10-13T22:50",
+          "kind": "travel",
+          "title": "Walk to Fountain Family Resto And Bar",
+          "place": null,
+          "candidate_id": null,
+          "cost": {
+            "amount": 0.0,
+            "currency": "INR",
+            "estimate": true
+          },
+          "travel": {
+            "mode": "walk",
+            "minutes": 11.0,
+            "km": 0.9,
+            "source": "estimate"
+          },
+          "notes": null
+        },
+        {
+          "start": "2026-10-13T22:50",
+          "end": "2026-10-14T00:05",
+          "kind": "meal",
+          "title": "Fountain Family Resto And Bar",
+          "place": {
+            "name": "Fountain Family Resto And Bar",
+            "lat": 18.5267316,
+            "lon": 73.8520364,
+            "address": "Fountain Family Resto And Bar, Shivaji Road, Shivajinagar, Pune - 411001, Maharashtra, India",
+            "source": "geoapify",
+            "source_id": "n/13624420814",
+            "url": null
+          },
+          "candidate_id": "geo:511a40aec387765240590fc5d3e1d7863240f00103f901ce29142c0300000092031d466f756e7461696e2046616d696c7920526573746f20416e6420426172",
+          "cost": {
+            "amount": 600.0,
+            "currency": "INR",
+            "estimate": true
+          },
+          "travel": null,
+          "notes": null
+        },
+        {
+          "start": "2026-10-14T00:17",
+          "end": "2026-10-14T00:20",
+          "kind": "travel",
+          "title": "Walk to Krushnarao Gangurde",
+          "place": null,
+          "candidate_id": null,
+          "cost": {
+            "amount": 0.0,
+            "currency": "INR",
+            "estimate": true
+          },
+          "travel": {
+            "mode": "walk",
+            "minutes": 3.0,
+            "km": 0.2,
+            "source": "estimate"
+          },
+          "notes": null
+        },
+        {
+          "start": "2026-10-14T00:20",
+          "end": "2026-10-14T01:35",
+          "kind": "activity",
+          "title": "Krushnarao Gangurde",
+          "place": {
+            "name": "Krushnarao Gangurde",
+            "lat": 18.5260723,
+            "lon": 73.8506498,
+            "address": "Krushnarao Gangurde, Annasaheb Aavate Path, Shivajinagar, Pune - 411001, Maharashtra, India",
+            "source": "geoapify",
+            "source_id": "n/3837531769",
+            "url": null
+          },
+          "candidate_id": "geo:5155d6db0b7176524059ddd49bacac863240f00103f9017916bce4000000009203134b727573686e6172616f2047616e6775726465",
+          "cost": {
+            "amount": 150.0,
+            "currency": "INR",
+            "estimate": true
+          },
+          "travel": null,
+          "notes": null
+        },
+        {
+          "start": "2026-10-14T01:35",
+          "end": "2026-10-14T01:47",
+          "kind": "travel",
+          "title": "Walk back to Shivajinagar Railway Station Road, Shivajinagar, Pune - 411001, MH, India",
+          "place": null,
+          "candidate_id": null,
+          "cost": {
+            "amount": 0.0,
+            "currency": "INR",
+            "estimate": true
+          },
+          "travel": {
+            "mode": "walk",
+            "minutes": 12.0,
+            "km": 1.0,
+            "source": "estimate"
+          },
+          "notes": null
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "cost": 750,
+    "travel_minutes": 26,
+    "activity_minutes": 150,
+    "stops": 2,
+    "currency": "INR",
+    "budget": 1500.0
+  },
+  "weather": {
+    "kind": "forecast",
+    "daily": [
+      {
+        "date": "2026-10-13",
+        "desc": "clear",
+        "t_max": 33.5,
+        "t_min": 23.4,
+        "precip_mm": 0.0,
+        "precip_prob_max": 0,
+        "sunrise": "2026-10-13T06:27",
+        "sunset": "2026-10-13T18:13"
+      },
+      {
+        "date": "2026-10-14",
+        "desc": "overcast",
+        "t_max": 32.5,
+        "t_min": 22.9,
+        "precip_mm": 0.0,
+        "precip_prob_max": 2,
+        "sunrise": "2026-10-14T06:28",
+        "sunset": "2026-10-14T18:12"
+      }
+    ],
+    "wet_hours": [
+      "2026-10-13T20:00",
+      "2026-10-13T21:00",
+      "2026-10-13T22:00",
+      "2026-10-13T23:00",
+      "2026-10-14T00:00",
+      "2026-10-14T01:00"
+    ]
+  },
+  "conflicts": [],
+  "warnings": [
+    "HOURS_UNKNOWN: Opening hours for 'Fountain Family Resto And Bar' are not published; verify before going",
+    "HOURS_UNKNOWN: Opening hours for 'Krushnarao Gangurde' are not published; verify before going",
+    "WEATHER_RISK: Outdoor 'Krushnarao Gangurde' is scheduled during forecast rain",
+    "Some agents ran in degraded mode (LLM unavailable); plan built by deterministic fallbacks.",
+    "Costs and some travel times are estimates; check venue hours before leaving."
+  ],
+  "alternatives": [
+    {
+      "id": "geo:5102f22554707652405920915b38b5863240f00103f9018534582d030000009203164e65772043656e7472616c2052657374617572616e74",
+      "name": "New Central Restaurant",
+      "category": "food",
+      "distance_km": 0.71,
+      "opening_hours": null,
+      "url": null
+    },
+    {
+      "id": "geo:51fe0c6fd660765240596460788082863240f00103f901a82e8f6c0100000092030753757261626869",
+      "name": "Surabhi",
+      "category": "food",
+      "distance_km": 0.82,
+      "opening_hours": null,
+      "url": null
+    },
+    {
+      "id": "geo:5133558be39b76524059778f222180863240f00103f901d01e174b0100000092030541616c6f6b",
+      "name": "Aalok",
+      "category": "food",
+      "distance_km": 0.83,
+      "opening_hours": null,
+      "url": null
+    },
+    {
+      "id": "geo:51ff10d19e0176524059e4a9fd8cc1873240f00103f90125c7108d02000000",
+      "name": "Yana Sizzlers & Wok",
+      "category": "food",
+      "distance_km": 0.83,
+      "opening_hours": null,
+      "url": null
+    },
+    {
+      "id": "geo:514eb4ab90f27552405981b3942c27873240f00103f90131991ea60000000092030d59616e612053697a7a6c657273",
+      "name": "Yana Sizzlers",
+      "category": "food",
+      "distance_km": 1.02,
+      "opening_hours": "Mo-Su 12:00-23:00",
+      "url": "https://www.yanasizzlers.com/"
+    }
+  ],
+  "sources": [
+    "geoapify:n/13624420814",
+    "geoapify:n/3837531769"
+  ],
+  "stats": {
+    "llm_calls": 7,
+    "tool_calls": 3,
+    "messages": 9,
+    "input_tokens": 12832,
+    "output_tokens": 907,
+    "llm_fallbacks": 7,
+    "tool_errors": 0,
+    "coordinator_steps": 3,
+    "planner_revisions": 0,
+    "review_rounds": 1,
+    "agents": [
+      "coordinator",
+      "discovery",
+      "logistics",
+      "profile"
+    ],
+    "duration_s": 150.6
+  }
+}
