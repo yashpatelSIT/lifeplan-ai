@@ -54,14 +54,25 @@ class FakeSession:
             text = params.get("text", "")
             if "nowhere" in text.lower():
                 return FakeResponse({"results": []})
-            return FakeResponse({"results": [{"formatted": f"{text}, Maharashtra, India", "lat": PUNE[0], "lon": PUNE[1],
-                                              "city": "Pune", "country": "India", "country_code": "in",
+            lat, lon, city = PUNE[0], PUNE[1], "Pune"
+            if "mumbai" in text.lower():
+                lat, lon, city = 19.0760, 72.8777, "Mumbai"
+            elif "goa" in text.lower():
+                lat, lon, city = 15.2993, 74.1240, "Goa"
+            return FakeResponse({"results": [{"formatted": f"{text}, Maharashtra, India", "lat": lat, "lon": lon,
+                                              "city": city, "country": "India", "country_code": "in",
                                               "timezone": {"name": "Asia/Kolkata"}}]})
         if "nominatim" in url:
-            if "nowhere" in str(params.get("q", "")).lower():
+            q = str(params.get("q", "")).lower()
+            if "nowhere" in q:
                 return FakeResponse([])
-            return FakeResponse([{"display_name": "Pune, India", "lat": str(PUNE[0]), "lon": str(PUNE[1]),
-                                  "address": {"city": "Pune", "country": "India", "country_code": "in"}}])
+            lat, lon, city = PUNE[0], PUNE[1], "Pune"
+            if "mumbai" in q:
+                lat, lon, city = 19.0760, 72.8777, "Mumbai"
+            elif "goa" in q:
+                lat, lon, city = 15.2993, 74.1240, "Goa"
+            return FakeResponse([{"display_name": f"{city}, India", "lat": str(lat), "lon": str(lon),
+                                  "address": {"city": city, "country": "India", "country_code": "in"}}])
         if "geoapify.com/v2/places" in url:
             feats = []
             for cat in params["categories"].split(","):

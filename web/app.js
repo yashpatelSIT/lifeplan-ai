@@ -1,4 +1,4 @@
-/* LifePlan AI — Autonomous Multi-Agent Personal Planner Web Client */
+/* LifePlan AI — Smart Personal Planner & Itinerary Builder Web Client */
 (() => {
   "use strict";
 
@@ -19,17 +19,23 @@
     meal: "🍽️", snack: "☕", activity: "🎯", event: "🎟️", travel: "🚕",
     hotel: "🏨", flight: "✈️", train: "🚆", busy: "⛔", buffer: "⏸️"
   };
-  const MODE_ICON = { walk: "🚶", transit: "🚌", cab: "🚕", drive: "🚗", bike: "🚲", none: "•" };
+  const MODE_ICON = { walk: "🚶", transit: "🚌", cab: "🚕", drive: "🚗", bike: "🚲", train: "🚆", flight: "✈️", none: "•" };
   const AGENT_ICON = {
     coordinator: "🤖", profile: "🧠", discovery: "📍", logistics: "🚗",
     planner: "📅", user: "🙂", environment: "🌍", system: "⚙️"
   };
 
-  let currentPlan = null, currentRun = null, map = null, mapLayer = null, source = null;
-  let activeFilter = "all";
+  let currentPlan = null;
+  let currentRun = null;
+  let map = null;
+  let mapLayer = null;
+  let source = null;
+  let currentStep = 1;
+  let maxVisitedStep = 1;
+  let commitments = [];
 
   // ------------------------------------------------------------------ Toast
-  function showToast(message, duration = 3000) {
+  function showToast(message, duration = 3200) {
     const container = $("#toast-container");
     if (!container) return;
     const toast = document.createElement("div");
@@ -45,29 +51,39 @@
   }
 
   // ------------------------------------------------------------------ Theme Switcher
-  const savedTheme = localStorage.getItem("lifeplan-theme") || "auto";
+  const savedTheme = localStorage.getItem("lifeplan-theme") || "light";
   document.documentElement.dataset.theme = savedTheme;
   updateThemeIcon(savedTheme);
 
   function updateThemeIcon(t) {
     const icon = $("#theme-icon");
     if (!icon) return;
-    if (t === "dark") icon.textContent = "☀️";
-    else if (t === "light") icon.textContent = "🌙";
-    else {
-      const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      icon.textContent = isDark ? "☀️" : "🌙";
-    }
+    icon.textContent = t === "dark" ? "☀️" : "🌙";
   }
 
   $("#btn-theme")?.addEventListener("click", () => {
-    const cur = document.documentElement.dataset.theme || "auto";
+    const cur = document.documentElement.dataset.theme || "light";
     const next = cur === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     localStorage.setItem("lifeplan-theme", next);
     updateThemeIcon(next);
-    showToast(`Switched to ${next} mode`);
+    showToast(`Switched to ${next} theme`);
   });
+
+  // ------------------------------------------------------------------ Dev Mock Mode
+  const mockToggle = $("#toggle-mock");
+  if (mockToggle) {
+    const savedMock = localStorage.getItem("lifeplan-mock-mode");
+    if (savedMock !== null) {
+      mockToggle.checked = savedMock === "true";
+    }
+    mockToggle.addEventListener("change", () => {
+      localStorage.setItem("lifeplan-mock-mode", mockToggle.checked ? "true" : "false");
+      showToast(mockToggle.checked
+        ? "🧪 Mock Mode ON: Plans will be generated offline with zero external API calls"
+        : "🌐 Live API Mode ON: Planning will invoke live AI models & data providers");
+    });
+  }
 
   // ------------------------------------------------------------------ Modal (How it works)
   const modal = $("#about-modal");
@@ -77,20 +93,26 @@
   modal?.addEventListener("click", (e) => {
     if (e.target === modal) modal.classList.add("hidden");
   });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal && !modal.classList.contains("hidden")) {
+      modal.classList.add("hidden");
+    }
+  });
 
-  // ------------------------------------------------------------------ Pipeline Stage Tracker
-  function setPipelineStep(stepNum) {
-    $$(".pipeline-step").forEach((el) => {
-      const s = parseInt(el.dataset.step, 10);
-      if (s < stepNum) {
-        el.className = "pipeline-step done";
-      } else if (s === stepNum) {
-        el.className = "pipeline-step active";
-      } else {
-        el.className = "pipeline-step";
-      }
-    });
-  }
+  // ------------------------------------------------------------------ Health fetch
+  fetch("/api/health")
+    .then((r) => r.json())
+    .then((h) => {
+      const pills = (h.llm_providers && h.llm_providers.length)
+        ? h.llm_providers.map((p) => `<span class="pill on">● LLM: ${esc(p)}</span>`)
+        : ['<span class="pill off">○ no LLM configured</span>'];
+      Object.entries(h.data_sources || {}).forEach(([k, v]) => {
+        pills.push(`<span class="pill ${v ? "on" : "off"}">${v ? "●" : "○"} ${esc(k)}</span>`);
+      });
+      const healthEl = $("#health");
+      if (healthEl) healthEl.innerHTML = pills.join("");
+    })
+    .catch(() => {});
 
   // ------------------------------------------------------------------ Form Chips
   function chipGroup(el, values, on) {
@@ -107,177 +129,468 @@
     el.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", values.includes(c.dataset.v)));
   }
 
-  chipGroup($("#interests"), INTERESTS, ["food", "culture"]);
+  chipGroup($("#interests"), INTERESTS, ["food", "cafe", "culture"]);
   chipGroup($("#modes"), MODES, ["walk", "transit", "cab"]);
 
+  // Trip Mode destination toggle
   $("#mode")?.addEventListener("change", () => {
     const val = $("#mode").value;
     $("#dest-wrap")?.classList.toggle("hidden", !TRIP.includes(val));
   });
 
+  // GPS Current Location
   $("#geo-btn")?.addEventListener("click", () => {
-    if (!navigator.geolocation) return alert("Geolocation not available");
+    if (!navigator.geolocation) {
+      showToast("Geolocation is not supported by your browser");
+      return;
+    }
+    showToast("Locating your coordinates...");
     navigator.geolocation.getCurrentPosition(
       (p) => {
-        $("#location").value = `${p.coords.latitude.toFixed(5)}, ${p.coords.longitude.toFixed(5)}`;
-        $("#location").dataset.lat = p.coords.latitude;
-        $("#location").dataset.lon = p.coords.longitude;
-        showToast("Using your current coordinates!");
+        const locInput = $("#location");
+        if (locInput) {
+          locInput.value = `${p.coords.latitude.toFixed(5)}, ${p.coords.longitude.toFixed(5)}`;
+          locInput.dataset.lat = p.coords.latitude;
+          locInput.dataset.lon = p.coords.longitude;
+        }
+        showToast("📍 Using your current coordinates!");
       },
-      () => alert("Could not fetch your location")
+      () => showToast("Could not retrieve your location. Please type your city/area.")
     );
   });
+
   $("#location")?.addEventListener("input", () => {
     delete $("#location").dataset.lat;
     delete $("#location").dataset.lon;
   });
 
-  function addBusy(b = {}) {
-    const row = document.createElement("div");
-    row.className = "busy-row";
-    row.innerHTML = `<input type="datetime-local" class="bs" value="${esc(b.start || "")}">
-      <input type="datetime-local" class="be" value="${esc(b.end || "")}">
-      <button type="button" class="btn-del" title="Remove block">✕</button>
-      <input class="bt" placeholder="e.g. Project meeting / Doctor appointment" value="${esc(b.title || "")}">`;
-    row.querySelector(".btn-del").onclick = () => row.remove();
-    $("#busy-list")?.appendChild(row);
-  }
-  $("#add-busy")?.addEventListener("click", () => addBusy());
-
-  // Tabs
-  $$(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
-  function showTab(name) {
-    $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
-    $$(".tab-body").forEach((b) => b.classList.toggle("hidden", b.id !== `tab-${name}`));
-    if (name === "map") setTimeout(drawMap, 50);
-  }
-
-  $("#show-llm")?.addEventListener("change", () => {
-    $$(".ev.llm").forEach((e) => e.classList.toggle("hidden", !$("#show-llm").checked));
-  });
-
-  // Feed Filter Pills
-  $$(".feed-filter").forEach((btn) => {
+  // ------------------------------------------------------------------ Step 1 Suggestions
+  $$(".sugg-chip").forEach((btn) => {
     btn.addEventListener("click", () => {
-      $$(".feed-filter").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      activeFilter = btn.dataset.filter;
-      applyFeedFilter();
-    });
-  });
-
-  function applyFeedFilter() {
-    $$("#feed .ev").forEach((el) => {
-      if (activeFilter === "all") {
-        el.style.display = "";
-      } else if (activeFilter === "message") {
-        el.style.display = el.classList.contains("message") ? "" : "none";
-      } else if (activeFilter === "decision") {
-        el.style.display = el.classList.contains("decision") ? "" : "none";
-      } else if (activeFilter === "conflict") {
-        el.style.display = el.classList.contains("conflict") ? "" : "none";
-      } else if (activeFilter === "tool") {
-        el.style.display = el.classList.contains("tool") ? "" : "none";
+      const q = btn.dataset.query;
+      const queryEl = $("#query");
+      if (queryEl) {
+        queryEl.value = q;
+        queryEl.focus();
+        showToast("Idea loaded! Review or customize your request.");
       }
     });
-  }
+  });
 
-  // Health fetch
-  fetch("/api/health")
-    .then((r) => r.json())
-    .then((h) => {
-      const pills = (h.llm_providers && h.llm_providers.length)
-        ? h.llm_providers.map((p) => `<span class="pill on">● LLM: ${esc(p)}</span>`)
-        : ['<span class="pill off">○ no LLM configured</span>'];
-      Object.entries(h.data_sources || {}).forEach(([k, v]) => {
-        pills.push(`<span class="pill ${v ? "on" : "off"}">${v ? "●" : "○"} ${esc(k)}</span>`);
-      });
-      const healthEl = $("#health");
-      if (healthEl) healthEl.innerHTML = pills.join("");
-    })
-    .catch(() => {});
+  // ------------------------------------------------------------------ Step 3: My Existing Commitments Management
+  let editingCommitmentIdx = -1;
 
-  // ------------------------------------------------------------------ Presets
-  const PRESET_METAS = [
-    { icon: "🎭", badge: "Conflict Demo", desc: "Hinjewadi meeting → Live comedy + dinner under ₹1500" },
-    { icon: "⚡", badge: "Right Now", desc: "What can I do right now in Pune? Fast 2-hr plan" },
-    { icon: "🏖️", badge: "Weekend Trip", desc: "Goa 3-day getaway: beaches, seafood & heritage" },
-    { icon: "🏛️", badge: "Day Tour", desc: "Full-day Mumbai exploration: art, food & sights" },
-    { icon: "💼", badge: "Work Trip", desc: "Bengaluru 2-day business schedule with travel buffer" },
-    { icon: "🗼", badge: "Vacation", desc: "Tokyo 5-day vacation with hotels, transit & dining" },
-  ];
+  function renderCommitments() {
+    const list = $("#commitments-list");
+    const emptyMsg = $("#no-commitments-msg");
+    const badge = $("#commitments-count-badge");
+    if (!list) return;
 
-  fetch("/api/samples")
-    .then((r) => r.json())
-    .then((list) => {
-      renderPresetCards(list);
-    })
-    .catch(() => {});
+    list.innerHTML = "";
+    if (badge) badge.textContent = `${commitments.length} commitment${commitments.length === 1 ? "" : "s"}`;
 
-  function renderPresetCards(list) {
-    const grid = $("#preset-cards");
-    if (!grid) return;
-    grid.innerHTML = list.map((s, i) => {
-      const meta = PRESET_METAS[i % PRESET_METAS.length];
-      const title = s.request._label || s.name || `Scenario ${i + 1}`;
-      return `
-        <div class="preset-card" data-i="${i}">
-          <div class="preset-card-top">
-            <span class="preset-icon">${meta.icon}</span>
-            <span class="preset-badge">${meta.badge}</span>
-          </div>
-          <div class="preset-name">${esc(title)}</div>
-          <div class="preset-desc">${esc(meta.desc)}</div>
+    if (commitments.length === 0) {
+      if (emptyMsg) emptyMsg.classList.remove("hidden");
+      return;
+    }
+
+    if (emptyMsg) emptyMsg.classList.add("hidden");
+    commitments.forEach((b, idx) => {
+      const item = document.createElement("div");
+      item.className = "commitment-item";
+      const locStr = b.location ? ` · 📍 ${esc(b.location)}` : "";
+      const notesStr = b.notes ? ` · 📝 ${esc(b.notes)}` : "";
+      item.innerHTML = `
+        <div class="commitment-item-info">
+          <span class="commitment-title">${esc(b.title || "Scheduled commitment")}</span>
+          <span class="commitment-time">📅 ${esc(b.date)}: ${esc(b.start_time)} – ${esc(b.end_time)}${locStr}${notesStr}</span>
+        </div>
+        <div class="commitment-item-actions">
+          <button type="button" class="btn-edit-commitment" data-idx="${idx}">Edit</button>
+          <button type="button" class="btn-remove-commitment" title="Remove commitment" data-idx="${idx}">✕</button>
         </div>
       `;
-    }).join("");
-
-    grid.addEventListener("click", (e) => {
-      const card = e.target.closest(".preset-card");
-      if (!card) return;
-      $$(".preset-card").forEach((c) => c.classList.remove("active"));
-      card.classList.add("active");
-      const idx = +card.dataset.i;
-      if (list[idx]) {
-        fillForm(list[idx].request);
-        showToast(`Loaded scenario: ${list[idx].request._label || list[idx].name}`);
-      }
+      item.querySelector(".btn-edit-commitment").onclick = () => {
+        loadCommitmentIntoForm(idx);
+      };
+      item.querySelector(".btn-remove-commitment").onclick = () => {
+        commitments.splice(idx, 1);
+        if (editingCommitmentIdx === idx) resetCommitmentForm();
+        renderCommitments();
+        showToast("Commitment removed");
+      };
+      list.appendChild(item);
     });
   }
 
-  const toLocalInput = (iso) => (iso ? iso.slice(0, 16) : "");
-  function fillForm(r) {
-    if ($("#query")) $("#query").value = r.query || "";
-    if ($("#mode")) {
-      $("#mode").value = r.mode || "auto";
-      $("#mode").dispatchEvent(new Event("change"));
-    }
-    if ($("#location")) {
-      $("#location").value = r.location || "";
-      delete $("#location").dataset.lat;
-    }
-    if ($("#destination")) $("#destination").value = r.destination || "";
-    if ($("#start")) $("#start").value = toLocalInput(r.start);
-    if ($("#end")) $("#end").value = toLocalInput(r.end);
-    if ($("#budget")) $("#budget").value = r.budget ? r.budget.amount : "";
-    if ($("#currency")) $("#currency").value = r.budget ? r.budget.currency : "INR";
-    if ($("#party")) $("#party").value = r.party_size || 1;
-    if ($("#pace")) $("#pace").value = r.pace || "balanced";
+  function loadCommitmentIntoForm(idx) {
+    const c = commitments[idx];
+    if (!c) return;
+    editingCommitmentIdx = idx;
+    if ($("#commitment-title")) $("#commitment-title").value = c.title || "";
+    if ($("#commitment-date")) $("#commitment-date").value = c.date || "";
+    if ($("#commitment-start-time")) $("#commitment-start-time").value = c.start_time || "";
+    if ($("#commitment-end-time")) $("#commitment-end-time").value = c.end_time || "";
+    if ($("#commitment-location")) $("#commitment-location").value = c.location || "";
+    if ($("#commitment-notes")) $("#commitment-notes").value = c.notes || "";
 
-    setChips($("#interests"), r.interests || []);
-    setChips($("#modes"), r.travel_modes || ["walk", "transit", "cab"]);
-    if ($("#learned")) $("#learned").checked = r.use_learned_schedule !== false;
-
-    if ($("#busy-list")) $("#busy-list").innerHTML = "";
-    (r.busy_blocks || []).forEach((b) =>
-      addBusy({ start: toLocalInput(b.start), end: toLocalInput(b.end), title: b.title })
-    );
-    if ((r.busy_blocks || []).length && $(".busy-box")) $(".busy-box").open = true;
-    if ($("#plan-form")) $("#plan-form").dataset.now = r.now || "";
+    const heading = $("#form-commitment-heading");
+    if (heading) heading.textContent = "Edit commitment";
+    const btnSave = $("#btn-save-commitment");
+    if (btnSave) btnSave.textContent = "✓ Update Commitment";
+    $("#btn-cancel-edit-commitment")?.classList.remove("hidden");
   }
 
-  // ------------------------------------------------------------------ Submit
+  function resetCommitmentForm() {
+    editingCommitmentIdx = -1;
+    if ($("#commitment-title")) $("#commitment-title").value = "";
+    if ($("#commitment-date")) $("#commitment-date").value = "";
+    if ($("#commitment-start-time")) $("#commitment-start-time").value = "";
+    if ($("#commitment-end-time")) $("#commitment-end-time").value = "";
+    if ($("#commitment-location")) $("#commitment-location").value = "";
+    if ($("#commitment-notes")) $("#commitment-notes").value = "";
+
+    const heading = $("#form-commitment-heading");
+    if (heading) heading.textContent = "Add a commitment";
+    const btnSave = $("#btn-save-commitment");
+    if (btnSave) btnSave.textContent = "+ Add Commitment";
+    $("#btn-cancel-edit-commitment")?.classList.add("hidden");
+  }
+
+  $("#btn-cancel-edit-commitment")?.addEventListener("click", resetCommitmentForm);
+
+  $("#btn-save-commitment")?.addEventListener("click", () => {
+    const title = $("#commitment-title")?.value.trim() || "Existing commitment";
+    const dateVal = $("#commitment-date")?.value;
+    const startTime = $("#commitment-start-time")?.value;
+    const endTime = $("#commitment-end-time")?.value;
+    const location = $("#commitment-location")?.value.trim() || "";
+    const notes = $("#commitment-notes")?.value.trim() || "";
+
+    if (!title) {
+      showToast("Please enter an event or commitment name.");
+      $("#commitment-title")?.focus();
+      return;
+    }
+    if (!dateVal) {
+      showToast("Please choose the date of your commitment.");
+      $("#commitment-date")?.focus();
+      return;
+    }
+    if (!startTime || !endTime) {
+      showToast("Please provide both start and end times.");
+      return;
+    }
+    if (startTime >= endTime) {
+      showToast("End time must be after start time.");
+      return;
+    }
+
+    const start = `${dateVal}T${startTime}`;
+    const end = `${dateVal}T${endTime}`;
+
+    const item = {
+      title,
+      date: dateVal,
+      start_time: startTime,
+      end_time: endTime,
+      start,
+      end,
+      location,
+      notes,
+    };
+
+    if (editingCommitmentIdx >= 0 && editingCommitmentIdx < commitments.length) {
+      commitments[editingCommitmentIdx] = item;
+      showToast(`Updated: ${title}`);
+    } else {
+      commitments.push(item);
+      showToast(`Added: ${title}`);
+    }
+
+    resetCommitmentForm();
+    renderCommitments();
+  });
+
+  $("#btn-disconnect-cal")?.addEventListener("click", async () => {
+    try {
+      await fetch("/api/calendar/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feed_url: "" })
+      });
+      showToast("Calendar feed disconnected.");
+      if ($("#input-feed-url")) $("#input-feed-url").value = "";
+      $("#modal-cal-connect")?.classList.add("hidden");
+    } catch (err) {
+      showToast(`Error: ${err.message}`);
+    }
+  });
+
+  // ------------------------------------------------------------------ Wizard Stepper Navigation
+  function goToStep(step) {
+    if (step < 1 || step > 4) return;
+    currentStep = step;
+    if (step > maxVisitedStep) maxVisitedStep = step;
+
+    // Panes
+    $$(".wizard-step-pane").forEach((pane) => {
+      pane.classList.toggle("active", pane.id === `step-${step}`);
+      pane.classList.toggle("hidden", pane.id !== `step-${step}`);
+    });
+
+    // Indicators
+    $$(".step-indicator").forEach((ind) => {
+      const s = parseInt(ind.dataset.step, 10);
+      ind.classList.remove("active", "completed");
+      if (s === step) {
+        ind.classList.add("active");
+      } else if (s < step) {
+        ind.classList.add("completed");
+      }
+    });
+
+    if (step === 3) {
+      renderCommitments();
+    } else if (step === 4) {
+      updateReviewCard();
+    }
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // Allow clicking on stepper indicators
+  $$(".step-indicator").forEach((ind) => {
+    ind.addEventListener("click", () => {
+      const targetStep = parseInt(ind.dataset.step, 10);
+      // Allow navigation if target is already visited or current step is validated
+      if (targetStep < currentStep || targetStep <= maxVisitedStep) {
+        goToStep(targetStep);
+      }
+    });
+  });
+
+  // Jump buttons on Step 4 review
+  $$("[data-jump-step]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const step = parseInt(btn.dataset.jumpStep, 10);
+      goToStep(step);
+    });
+  });
+
+  // Step 1 navigation
+  $("#btn-step1-next")?.addEventListener("click", () => {
+    const q = $("#query")?.value.trim();
+    if (!q || q.length < 3) {
+      $("#query")?.focus();
+      showToast("Please write a short description of what you'd like to do.");
+      return;
+    }
+    goToStep(2);
+  });
+
+  // Step 2 navigation
+  $("#btn-step2-prev")?.addEventListener("click", () => goToStep(1));
+  $("#btn-step2-next")?.addEventListener("click", () => {
+    const loc = $("#location")?.value.trim();
+    if (!loc) {
+      $("#location")?.focus();
+      showToast("Please provide your starting location or city.");
+      return;
+    }
+    goToStep(3);
+  });
+
+  // Step 3 navigation
+  $("#btn-step3-prev")?.addEventListener("click", () => goToStep(2));
+  $("#btn-step3-skip")?.addEventListener("click", () => goToStep(4));
+  $("#btn-step3-next")?.addEventListener("click", () => goToStep(4));
+
+  // Step 4 navigation
+  $("#btn-step4-prev")?.addEventListener("click", () => goToStep(3));
+
+  // ------------------------------------------------------------------ Step 4: Review Summary & Requirements Extractor
+  function renderExtractedRequirementsCard(ext) {
+    const card = $("#extracted-requirements-card");
+    const grid = $("#extracted-reqs-grid");
+    if (!card || !grid || !ext) return;
+
+    card.classList.remove("hidden");
+    const items = [];
+
+    if (ext.origin) {
+      items.push(`<div class="extracted-req-item">
+        <span class="req-item-label">Origin (Starting Point)</span>
+        <span class="req-item-val">${esc(ext.origin)}</span>
+      </div>`);
+    }
+    if (ext.destination) {
+      items.push(`<div class="extracted-req-item">
+        <span class="req-item-label">Destination</span>
+        <span class="req-item-val">${esc(ext.destination)}</span>
+      </div>`);
+    }
+    if (ext.start && ext.end) {
+      items.push(`<div class="extracted-req-item">
+        <span class="req-item-label">Dates & Window</span>
+        <span class="req-item-val">${esc(ext.start.slice(0, 10))} → ${esc(ext.end.slice(0, 10))}</span>
+      </div>`);
+    }
+    if (ext.return_deadline?.time_str) {
+      items.push(`<div class="extracted-req-item">
+        <span class="req-item-label">Return Deadline</span>
+        <span class="req-item-val">⏰ Arrive by ${esc(ext.return_deadline.time_str)}</span>
+      </div>`);
+    }
+    if (ext.budget != null) {
+      items.push(`<div class="extracted-req-item">
+        <span class="req-item-label">Extracted Budget</span>
+        <span class="req-item-val">💰 ${Number(ext.budget).toLocaleString()} ${esc(ext.currency || "INR")}</span>
+      </div>`);
+    }
+    if (ext.hotel?.min_stars) {
+      items.push(`<div class="extracted-req-item">
+        <span class="req-item-label">Hotel Rating</span>
+        <span class="req-item-val">⭐ ${ext.hotel.min_stars}-star minimum</span>
+      </div>`);
+    }
+    if (ext.party_size) {
+      items.push(`<div class="extracted-req-item">
+        <span class="req-item-label">Party Size</span>
+        <span class="req-item-val">👥 ${ext.party_size} ${ext.party_size == 1 ? "person" : "people"}</span>
+      </div>`);
+    }
+    if (ext.travel_modes && ext.travel_modes.length) {
+      items.push(`<div class="extracted-req-item">
+        <span class="req-item-label">Transport</span>
+        <span class="req-item-val">🚗 ${esc(ext.travel_modes.join(", "))}</span>
+      </div>`);
+    }
+    if (ext.interests && ext.interests.length) {
+      items.push(`<div class="extracted-req-item">
+        <span class="req-item-label">Activities</span>
+        <span class="req-item-val">🎯 ${esc(ext.interests.join(", "))}</span>
+      </div>`);
+    }
+    if (ext.exclusions && ext.exclusions.length) {
+      items.push(`<div class="extracted-req-item" style="border-color: var(--danger-soft);">
+        <span class="req-item-label" style="color: var(--danger);">Exclusions</span>
+        <span class="req-item-val" style="color: var(--danger);">🚫 ${esc(ext.exclusions.join(", "))}</span>
+      </div>`);
+    }
+    if (ext.pace) {
+      items.push(`<div class="extracted-req-item">
+        <span class="req-item-label">Pace</span>
+        <span class="req-item-val">⚡ ${esc(ext.pace)}</span>
+      </div>`);
+    }
+
+    grid.innerHTML = items.length ? items.join("") : `<div class="text-muted text-xs">Standard defaults applied.</div>`;
+  }
+
+  async function updateReviewCard() {
+    const query = $("#query")?.value.trim() || "No request specified";
+    const startVal = $("#start")?.value;
+    const endVal = $("#end")?.value;
+    const loc = $("#location")?.value.trim() || "Not specified";
+    const mode = $("#mode")?.value || "auto";
+    const dest = $("#destination")?.value.trim();
+    const budgetVal = $("#budget")?.value;
+    const currency = $("#currency")?.value || "INR";
+    const party = $("#party")?.value || 1;
+    const interests = selected($("#interests"));
+    const modes = selected($("#modes"));
+    const pace = $("#pace")?.value || "balanced";
+
+    // Text query
+    if ($("#rev-query")) $("#rev-query").textContent = `"${query}"`;
+
+    // Fetch structured extracted requirements from API (Priority 3)
+    try {
+      const res = await fetch("/api/extract-requirements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, start: startVal || null, end: endVal || null }),
+      });
+      if (res.ok) {
+        const ext = await res.json();
+        renderExtractedRequirementsCard(ext);
+      }
+    } catch (e) {
+      console.warn("Could not extract requirements:", e);
+    }
+
+    // Datetime & Precedence Check
+    const datePattern = /\b(from\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s+to\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm)|tomorrow|today|tonight|this\s+weekend)\b/i;
+    const hasNlTiming = datePattern.test(query);
+
+    const callout = $("#precedence-callout");
+    const calloutText = $("#precedence-text");
+
+    if (hasNlTiming) {
+      if (callout) callout.classList.remove("hidden");
+      if (calloutText) {
+        calloutText.innerHTML = `<b>Smart Precedence:</b> Specific dates and times in your request take priority over selector pickers.`;
+      }
+    } else {
+      if (callout) callout.classList.add("hidden");
+    }
+
+    let dtSummary = "";
+    if (startVal && endVal) {
+      dtSummary = `${startVal.replace("T", " ")} to ${endVal.replace("T", " ")}`;
+    } else if (startVal) {
+      dtSummary = `Starts: ${startVal.replace("T", " ")} (duration auto-fit)`;
+    } else if (endVal) {
+      dtSummary = `Ends by: ${endVal.replace("T", " ")}`;
+    } else {
+      dtSummary = hasNlTiming
+        ? "Derived from your natural-language request"
+        : "Auto-detecting optimal free window";
+    }
+    if ($("#rev-datetime")) $("#rev-datetime").textContent = dtSummary;
+
+    // Location
+    let locSummary = loc;
+    if (TRIP.includes(mode) && dest) {
+      locSummary += ` → ${dest} (${mode.replace("_", " ")})`;
+    }
+    if ($("#rev-location")) $("#rev-location").textContent = locSummary;
+
+    // Budget & Group
+    const budgetSummary = budgetVal && +budgetVal > 0
+      ? `Budget: ${Number(budgetVal).toLocaleString()} ${currency} · Party: ${party} ${party == 1 ? "person" : "people"}`
+      : `Budget: Flexible · Party: ${party} ${party == 1 ? "person" : "people"}`;
+    if ($("#rev-budget")) $("#rev-budget").textContent = budgetSummary;
+
+    // Preferences & Transport
+    const prefsSummary = [
+      interests.length ? `Interests: ${interests.join(", ")}` : "All activities",
+      modes.length ? `Transport: ${modes.join(", ")}` : "Walk / Transit / Cab",
+      `Pace: ${pace}`
+    ].join(" · ");
+    if ($("#rev-prefs")) $("#rev-prefs").textContent = prefsSummary;
+
+    // Commitments
+    const modeChoice = document.querySelector('input[name="commitments_mode"]:checked')?.value || "plan_around";
+    let commitmentsSummary = "";
+    const icsFile = $("#ics")?.files?.[0];
+    if (modeChoice === "ignore") {
+      commitmentsSummary = "Ignore Commitments chosen. Entire window will be treated as 100% open.";
+    } else if (commitments.length > 0) {
+      commitmentsSummary = `${commitments.length} commitment(s) declared. Planning strictly around them.`;
+    } else if (icsFile) {
+      commitmentsSummary = `Importing busy blocks from ${icsFile.name}.`;
+    } else {
+      commitmentsSummary = "No commitments added. Calendar is treated as completely open (zero constraints).";
+    }
+    if ($("#rev-commitments")) $("#rev-commitments").textContent = commitmentsSummary;
+  }
+
+  // ------------------------------------------------------------------ Submit Plan
   async function buildRequest() {
+    const isMock = $("#toggle-mock")?.checked ?? false;
+    const modeChoice = document.querySelector('input[name="commitments_mode"]:checked')?.value || "plan_around";
     const req = {
       query: $("#query").value.trim(),
       mode: $("#mode").value,
@@ -286,8 +599,11 @@
       travel_modes: selected($("#modes")),
       party_size: +$("#party").value || 1,
       pace: $("#pace").value,
-      use_learned_schedule: $("#learned")?.checked ?? true,
+      commitments_mode: modeChoice,
+      use_learned_schedule: $("#learned")?.checked ?? false,
+      dev_mock: isMock
     };
+
     if ($("#location").dataset.lat) {
       req.coordinates = { lat: +$("#location").dataset.lat, lon: +$("#location").dataset.lon };
     }
@@ -301,32 +617,95 @@
     }
     if ($("#plan-form")?.dataset.now) req.now = $("#plan-form").dataset.now;
 
-    req.busy_blocks = $$(".busy-row").map((r) => ({
-      start: r.querySelector(".bs").value,
-      end: r.querySelector(".be").value,
-      title: r.querySelector(".bt").value || "Busy",
-    })).filter((b) => b.start && b.end);
+    if (modeChoice === "ignore") {
+      req.busy_blocks = [];
+    } else {
+      req.busy_blocks = commitments.map((b) => ({
+        start: b.start,
+        end: b.end,
+        title: b.title || "Commitment",
+        date: b.date || b.start.slice(0, 10),
+        location: b.location || null,
+        notes: b.notes || null,
+      }));
+    }
 
     const f = $("#ics")?.files?.[0];
-    if (f) req.calendar_ics = await f.text();
+    if (f && modeChoice !== "ignore") req.calendar_ics = await f.text();
     return req;
   }
 
   $("#plan-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const req = await buildRequest();
-    startRun("/api/runs", req, "Planning");
+    startRun("/api/runs", req, "Creating itinerary");
   });
+
+  // ------------------------------------------------------------------ Planning Activity Panel Stages Tracker
+  function resetStages() {
+    setStageStatus(1, "in-progress", "In progress");
+    setStageStatus(2, "waiting", "Waiting");
+    setStageStatus(3, "waiting", "Waiting");
+    setStageStatus(4, "waiting", "Waiting");
+    setStageStatus(5, "waiting", "Waiting");
+
+    const overallStatus = $("#panel-overall-status");
+    if (overallStatus) {
+      overallStatus.textContent = "In progress";
+      overallStatus.style.background = "var(--accent-primary-soft)";
+      overallStatus.style.color = "var(--accent-primary)";
+    }
+  }
+
+  function setStageStatus(stageNum, state, badgeText) {
+    const el = $(`#stage-${stageNum}`);
+    if (!el) return;
+    el.className = `stage-item ${state}`;
+    const badge = el.querySelector(".stage-badge");
+    if (badge) {
+      badge.textContent = badgeText;
+      if (state === "completed") {
+        badge.style.color = "var(--ok)";
+      } else if (state === "in-progress") {
+        badge.style.color = "var(--accent-primary)";
+      } else if (state === "needs-attention") {
+        badge.style.color = "var(--warn)";
+      } else {
+        badge.style.color = "var(--text-muted)";
+      }
+    }
+  }
 
   async function startRun(url, body, label) {
     const submitBtn = $("#submit");
-    if (submitBtn) submitBtn.disabled = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      const btnText = submitBtn.querySelector(".btn-text");
+      if (btnText) btnText.textContent = "Planning Itinerary...";
+    }
+
     $("#feed").innerHTML = "";
-    $$(".agent").forEach((a) => a.classList.remove("active", "done"));
-    setPipelineStep(1);
-    if ($("#board-status-text")) $("#board-status-text").textContent = "Agents Collaborating";
-    showTab("live");
-    setStatus(`<b>${label} in progress</b> — 5 agents are evaluating constraints, routing and searching venues.`);
+    resetStages();
+
+    // Show Results view with skeleton/loading state
+    $("#wizard-card")?.classList.add("hidden");
+    $("#results-view")?.classList.remove("hidden");
+
+    $("#plan-status").textContent = "Creating Plan...";
+    $("#plan-status").className = "badge partial";
+    $("#plan-summary").textContent = "Five specialized agents are coordinating to build your personalized schedule...";
+    $("#totals").innerHTML = "";
+    $("#timeline").innerHTML = `<div class="empty" style="padding: 28px 16px; text-align: center; color: var(--text-secondary);">
+      <div style="font-size: 28px; margin-bottom: 8px;">⏳</div>
+      <b>Collaborating Agents at Work</b><br>
+      Finding verified venues, measuring travel buffers, and solving constraints...
+    </div>`;
+
+    // Expand activity panel during planning to show live progress
+    const activityPanel = $("#activity-panel");
+    if (activityPanel) activityPanel.open = true;
+
+    setStatus(`<b>${label} in progress</b> — 5 agents are evaluating constraints, routing, and searching venues.`);
 
     try {
       const res = await fetch(url, {
@@ -342,8 +721,19 @@
       listen(data.run_id);
     } catch (err) {
       setStatus(`❌ <b>Planning Failed:</b> ${esc(err.message)}`);
-      if (submitBtn) submitBtn.disabled = false;
-      if ($("#board-status-text")) $("#board-status-text").textContent = "Error";
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        const btnText = submitBtn.querySelector(".btn-text");
+        if (btnText) btnText.textContent = "Create My Itinerary";
+      }
+      setStageStatus(1, "needs-attention", "Needs attention");
+      const overallStatus = $("#panel-overall-status");
+      if (overallStatus) {
+        overallStatus.textContent = "Failed";
+        overallStatus.style.background = "var(--danger-soft)";
+        overallStatus.style.color = "var(--danger)";
+      }
+      showToast(`Planning failed: ${err.message}`, 5000);
     }
   }
 
@@ -361,36 +751,39 @@
 
     source.addEventListener("done", async () => {
       source.close();
-      $$(".agent").forEach((a) => {
-        a.classList.remove("active");
-        a.classList.add("done");
-      });
-      setPipelineStep(5);
-      if ($("#board-status-text")) $("#board-status-text").textContent = "Finalized";
+      setStageStatus(5, "completed", "Completed");
+
+      const overallStatus = $("#panel-overall-status");
+      if (overallStatus) {
+        overallStatus.textContent = "Completed";
+        overallStatus.style.background = "var(--ok-soft)";
+        overallStatus.style.color = "var(--ok)";
+      }
 
       const st = await (await fetch(`/api/runs/${runId}`)).json();
-      if ($("#submit")) $("#submit").disabled = false;
+      const submitBtn = $("#submit");
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        const btnText = submitBtn.querySelector(".btn-text");
+        if (btnText) btnText.textContent = "Create My Itinerary";
+      }
 
       const dlJson = $("#dl-json");
       const dlMd = $("#dl-md");
-      if (dlJson) {
-        dlJson.href = `/api/runs/${runId}/trace`;
-        dlJson.classList.remove("disabled");
-      }
-      if (dlMd) {
-        dlMd.href = `/api/runs/${runId}/trace?format=md`;
-        dlMd.classList.remove("disabled");
-      }
+      if (dlJson) dlJson.href = `/api/runs/${runId}/trace`;
+      if (dlMd) dlMd.href = `/api/runs/${runId}/trace?format=md`;
 
       if ($("#trace-stats")) $("#trace-stats").innerHTML = stats(st.stats);
 
       if (st.status === "done" && st.result) {
-        setStatus(`✅ <b>Plan Complete!</b> ${st.stats.llm_calls} LLM calls · ${st.stats.tool_calls} tool calls · ${st.stats.messages} agent messages. Switched to <b>Final Itinerary</b> tab.`);
+        setStatus(`✅ <b>Plan Complete!</b> ${st.stats.llm_calls} LLM calls · ${st.stats.tool_calls} tool calls · ${st.stats.messages} agent messages.`);
         renderPlan(st.result);
-        showTab("plan");
-        showToast("Plan ready! Check the Final Itinerary tab.");
+        showToast("Your itinerary is ready!");
       } else {
         setStatus(`❌ <b>Plan Error:</b> ${esc(st.error || "Run did not complete")}`);
+        $("#plan-status").textContent = "Planning Error";
+        $("#plan-status").className = "badge failed";
+        $("#plan-summary").textContent = st.error || "The agents were unable to complete the schedule.";
       }
     });
 
@@ -402,25 +795,27 @@
   function renderEvent(e) {
     const d = e.data || {};
 
-    // Visual Board highlighting
+    // Progress stage updates based on actual agent events
     if (e.type === "agent_start") {
-      $(`.agent[data-agent=${e.agent}]`)?.classList.add("active");
-      if (e.agent === "discovery" || e.agent === "logistics") setPipelineStep(2);
-      if (e.agent === "planner") setPipelineStep(3);
-      return;
-    }
-    if (e.type === "agent_end") {
-      const a = $(`.agent[data-agent=${e.agent}]`);
-      a?.classList.remove("active");
-      a?.classList.add("done");
-      return;
-    }
-    if (e.type === "decision") {
-      $$(".agent").forEach((a) => a.classList.remove("active"));
-      $(".agent[data-agent=coordinator]")?.classList.add("active");
-    }
-    if (e.type === "conflict" || (e.type === "message" && d.kind === "critique")) {
-      setPipelineStep(4);
+      if (e.agent === "coordinator") {
+        setStageStatus(1, "in-progress", "In progress");
+      } else if (e.agent === "profile") {
+        setStageStatus(1, "completed", "Completed");
+        setStageStatus(2, "in-progress", "In progress");
+      } else if (e.agent === "discovery") {
+        setStageStatus(2, "completed", "Completed");
+        setStageStatus(3, "in-progress", "In progress");
+      } else if (e.agent === "logistics") {
+        setStageStatus(3, "completed", "Completed");
+        setStageStatus(4, "in-progress", "In progress");
+      } else if (e.agent === "planner") {
+        setStageStatus(4, "completed", "Completed");
+        setStageStatus(5, "in-progress", "In progress");
+      }
+    } else if (e.type === "agent_end") {
+      if (e.agent === "profile") setStageStatus(2, "completed", "Completed");
+      if (e.agent === "discovery") setStageStatus(3, "completed", "Completed");
+      if (e.agent === "logistics") setStageStatus(4, "completed", "Completed");
     }
 
     let html = "", cls = "", agent = e.agent;
@@ -434,12 +829,12 @@
       case "tool_call":
         cls = "tool";
         html = `<details><summary>🔧 ${who(e.agent)} called <b>${esc(e.content)}</b> ${d.ok ? "✓" : "✗"} <span class="muted">${d.duration_ms} ms</span></summary>
-          <pre>args: ${esc(JSON.stringify(d.args, null, 1))}\nresult: ${esc(JSON.stringify(d.result, null, 1)).slice(0, 3000)}</pre></details>`;
+          <pre>args: ${esc(JSON.stringify(d.args, null, 1))}\nresult: ${esc(JSON.stringify(d.result, null, 1)).slice(0, 2500)}</pre></details>`;
         break;
       case "llm_call":
         cls = "llm" + ($("#show-llm")?.checked ? "" : " hidden");
         html = `💭 ${who(e.agent)} <span class="muted">${esc(d.model)} · ${d.duration_ms} ms${d.fallback_used ? " · FALLBACK" : ""}</span>
-          ${d.tool_calls?.length ? " → " + d.tool_calls.map((t) => esc(t.name)).join(", ") : ""} ${e.content ? `<div>${esc(e.content.slice(0, 400))}</div>` : ""}`;
+          ${d.tool_calls?.length ? " → " + d.tool_calls.map((t) => esc(t.name)).join(", ") : ""} ${e.content ? `<div>${esc(e.content.slice(0, 300))}</div>` : ""}`;
         break;
       case "decision":
         cls = "decision";
@@ -455,11 +850,11 @@
         break;
       case "setup":
         cls = "decision";
-        html = `⚙️ Blackboard setup: ${esc(e.content)}`;
+        html = `⚙️ Initialization: ${esc(e.content)}`;
         break;
       case "final":
         cls = "final";
-        html = `🏁 Coordinator finalized: ${esc(e.content)}`;
+        html = `🏁 Finalized: ${esc(e.content)}`;
         break;
       default:
         return;
@@ -469,12 +864,6 @@
     div.className = `ev ${cls}`;
     div.dataset.agent = agent;
     div.innerHTML = `<span class="t">${time(e.t_ms)}</span>${html}`;
-
-    // Apply active filter
-    if (activeFilter === "message" && !div.classList.contains("message")) div.style.display = "none";
-    if (activeFilter === "decision" && !div.classList.contains("decision")) div.style.display = "none";
-    if (activeFilter === "conflict" && !div.classList.contains("conflict")) div.style.display = "none";
-    if (activeFilter === "tool" && !div.classList.contains("tool")) div.style.display = "none";
 
     const feed = $("#feed");
     if (!feed) return;
@@ -495,65 +884,58 @@
     ].map(([k, v]) => `<div class="stat"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join("");
   }
 
-  // ------------------------------------------------------------------ Plan View
+  // ------------------------------------------------------------------ Itinerary Results View
   const money = (c, cur) => (c && c.amount != null ? `${c.estimate ? "~" : ""}${Math.round(c.amount).toLocaleString()} ${esc(c.currency || cur || "")}` : "");
   const hm = (iso) => (iso || "").slice(11, 16);
 
+  let activeOptionIdx = 0;
+  let currentTimelineSort = "schedule";
+  let currentAltSort = "default";
+
   function renderPlan(p) {
     currentPlan = p;
-    $("#plan-empty")?.classList.add("hidden");
-    $("#plan")?.classList.remove("hidden");
+    activeOptionIdx = 0;
+    currentTimelineSort = "schedule";
+    currentAltSort = "default";
+
+    const sortSelect = $("#timeline-sort-select");
+    if (sortSelect) sortSelect.value = "schedule";
 
     const statusBadge = $("#plan-status");
     if (statusBadge) {
       statusBadge.textContent = p.status === "ok" ? "Optimized Plan" : p.status;
-      statusBadge.className = `badge ${p.status}`;
+      statusBadge.className = `badge ${p.status === "ok" ? "ok" : "partial"}`;
     }
-    if ($("#plan-summary")) $("#plan-summary").textContent = p.summary;
 
-    const t = p.totals || {};
-    const pct = t.budget ? Math.min(100, Math.round((t.cost / t.budget) * 100)) : null;
+    // Curated Options tabs
+    const optionsContainer = $("#itinerary-options-container");
+    const optionsTabs = $("#itinerary-options-tabs");
+    if (p.options && p.options.length > 1 && optionsTabs && optionsContainer) {
+      optionsContainer.classList.remove("hidden");
+      optionsTabs.innerHTML = p.options.map((opt, i) => `
+        <button type="button" class="btn-option-tab ${i === activeOptionIdx ? "active" : ""}" data-opt-idx="${i}">
+          <span class="option-title">${esc(opt.title || `Option ${i + 1}`)}</span>
+          ${opt.badge ? `<span class="badge ${opt.badge === "Top Match" ? "ok" : "accent"}">${esc(opt.badge)}</span>` : ""}
+          <span class="option-summary-stat">${opt.totals?.cost != null ? `${Math.round(opt.totals.cost)} ${esc(opt.totals.currency || "")}` : ""} · ${opt.totals?.travel_minutes ?? 0}m travel</span>
+        </button>
+      `).join("");
 
-    if ($("#totals")) {
-      $("#totals").innerHTML = `
-        <div class="stat">
-          <b>${esc(t.cost ?? 0)} ${esc(t.currency || "")}</b>
-          <span>Estimated cost${t.budget ? ` of ${esc(t.budget)} budget` : ""}</span>
-          ${pct != null ? `<div class="budget-bar"><i style="width:${pct}%;background:${pct > 100 ? "var(--danger)" : "var(--ok)"}"></i></div>` : ""}
-        </div>
-        <div class="stat"><b>${esc(t.stops ?? 0)}</b><span>Scheduled Stops</span></div>
-        <div class="stat"><b>${esc(t.travel_minutes ?? 0)} min</b><span>Travel Time</span></div>
-        <div class="stat"><b>${esc(p.stats?.coordinator_steps ?? "–")}</b><span>Coordinator Steps (${esc(p.stats?.planner_revisions ?? 0)} revisions)</span></div>`;
+      $$(".btn-option-tab", optionsTabs).forEach((btn) => {
+        btn.addEventListener("click", () => {
+          activeOptionIdx = parseInt(btn.dataset.optIdx, 10);
+          $$(".btn-option-tab", optionsTabs).forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          updateActiveOption();
+        });
+      });
+    } else if (optionsContainer) {
+      optionsContainer.classList.add("hidden");
     }
 
     if ($("#weather")) {
       $("#weather").innerHTML = (p.weather?.daily || []).map((w) =>
         `<span class="w">📅 <b>${esc(w.date)}:</b> ${esc(w.desc)}, ${esc(w.t_min)}–${esc(w.t_max)}°C${w.precip_prob_max != null ? `, rain ${esc(w.precip_prob_max)}%` : ""}</span>`
       ).join("") + (p.weather?.kind && p.weather.kind !== "forecast" ? `<span class="w">(${esc(p.weather.kind)})</span>` : "");
-    }
-
-    let n = 0;
-    if ($("#timeline")) {
-      $("#timeline").innerHTML = (p.days || []).map((d) => `<div class="day"><h3>${esc(new Date(d.date + "T00:00").toDateString())}</h3>${
-        d.items.map((it) => {
-          const num = ["meal", "snack", "activity", "event"].includes(it.kind) ? ++n : null;
-          let placeInfo = "";
-          if (it.place) {
-            const navUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((it.place.name || it.title) + " " + (it.place.address || ""))}`;
-            placeInfo = `${it.place.address ? esc(it.place.address) : ""}${it.place.url ? ` · <a href="${esc(it.place.url)}" target="_blank" rel="noopener">Website</a>` : ""} · <a class="item-nav-link" href="${navUrl}" target="_blank" rel="noopener">📍 Directions</a>${it.place.source ? ` · <span class="muted">via ${esc(it.place.source)}</span>` : ""}`;
-          }
-          const tr = it.travel ? `${esc(it.travel.km)} km · ${esc(it.travel.source || "road network")}` : "";
-          return `
-            <div class="item ${esc(it.kind)}">
-              <div class="time">${hm(it.start)}–${hm(it.end)}</div>
-              <div class="ico">${it.kind === "travel" && it.travel ? (MODE_ICON[it.travel.mode] || ICON.travel) : (ICON[it.kind] || "•")}</div>
-              <div>
-                <div class="title">${num ? num + ". " : ""}${esc(it.title)}</div>
-                <div class="sub">${placeInfo || tr}${it.notes ? " · " + esc(it.notes) : ""}</div>
-              </div>
-              <div class="cost">${money(it.cost, t.currency)}</div>
-            </div>`;
-        }).join("")}</div>`).join("") || `<div class="empty">The agents could not schedule any items in the available window.</div>`;
     }
 
     if ($("#conflicts")) {
@@ -565,14 +947,104 @@
       $("#warnings").innerHTML = p.warnings?.length ? `<div class="box warn"><b>Notes & Feasibility Details</b><ul>${p.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>` : "";
     }
 
-    if ($("#alternatives")) {
-      $("#alternatives").innerHTML = p.alternatives?.length ? `<h3>Alternative Places Explored</h3><div class="chips">${p.alternatives.map((a) =>
-        `<span class="chip">${esc(a.name)} <span class="muted">${esc(a.category || "")}${a.distance_km != null ? " · " + esc(a.distance_km) + " km" : ""}</span></span>`).join("")}</div>` : "";
+    renderAlternatives();
+    renderCostLedger(p);
+    updateActiveOption();
+  }
+
+  function renderCostLedger(p) {
+    const card = $("#cost-ledger-card");
+    if (!card) return;
+    const ledger = p.cost_ledger;
+    if (!ledger) {
+      card.classList.add("hidden");
+      return;
     }
+    card.classList.remove("hidden");
+
+    const cur = ledger.currency || p.currency || "INR";
+    const totalEl = $("#ledger-total-cost");
+    if (totalEl) totalEl.textContent = `${Number(ledger.total_cost).toLocaleString()} ${cur}`;
+
+    const badge = $("#ledger-budget-badge");
+    if (badge) {
+      if (ledger.budget != null) {
+        if (ledger.is_within_budget) {
+          badge.textContent = `Within Budget (₹${ledger.total_cost} / ₹${ledger.budget})`;
+          badge.className = "badge ok";
+        } else {
+          badge.textContent = `Over Budget by ₹${Math.abs(ledger.remaining_budget || 0)}`;
+          badge.className = "badge danger";
+        }
+      } else {
+        badge.textContent = "Estimated Expenses";
+        badge.className = "badge accent";
+      }
+    }
+
+    if ($("#ledger-acc")) $("#ledger-acc").textContent = `${Number(ledger.accommodation).toLocaleString()} ${cur}`;
+    if ($("#ledger-intercity")) $("#ledger-intercity").textContent = `${Number(ledger.intercity_transport).toLocaleString()} ${cur}`;
+    if ($("#ledger-local")) $("#ledger-local").textContent = `${Number(ledger.local_transport).toLocaleString()} ${cur}`;
+    if ($("#ledger-dining")) $("#ledger-dining").textContent = `${Number(ledger.food_and_dining).toLocaleString()} ${cur}`;
+    if ($("#ledger-activities")) $("#ledger-activities").textContent = `${Number(ledger.activities_and_entries).toLocaleString()} ${cur}`;
+    if ($("#ledger-contingency")) $("#ledger-contingency").textContent = `${Number(ledger.contingency).toLocaleString()} ${cur}`;
+    if ($("#ledger-remaining")) {
+      const rem = ledger.remaining_budget;
+      $("#ledger-remaining").textContent = rem != null ? `${Number(rem).toLocaleString()} ${cur}` : "N/A";
+    }
+
+    const notesContainer = $("#ledger-notes");
+    if (notesContainer) {
+      const notes = [];
+      if (ledger.verified_items_count > 0 || ledger.estimated_items_count > 0) {
+        notes.push(`<span>✓ ${ledger.verified_items_count} verified rates · ~ ${ledger.estimated_items_count} estimates</span>`);
+      }
+      (ledger.breakdown_notes || []).forEach((n) => notes.push(`<span>• ${esc(n)}</span>`));
+      notesContainer.innerHTML = notes.join("");
+    }
+  }
+
+  function updateActiveOption() {
+    if (!currentPlan) return;
+    const opt = (currentPlan.options && currentPlan.options[activeOptionIdx]) || {
+      title: "Option 1: Recommended",
+      summary: currentPlan.summary,
+      totals: currentPlan.totals,
+      days: currentPlan.days,
+    };
+
+    if ($("#plan-summary")) $("#plan-summary").textContent = opt.summary || currentPlan.summary;
+
+    const optBadge = $("#active-option-badge");
+    if (optBadge) {
+      if (currentPlan.options && currentPlan.options.length > 1) {
+        optBadge.textContent = opt.title || `Option ${activeOptionIdx + 1}`;
+        optBadge.classList.remove("hidden");
+      } else {
+        optBadge.classList.add("hidden");
+      }
+    }
+
+    const t = opt.totals || currentPlan.totals || {};
+    const pct = t.budget ? Math.min(100, Math.round((t.cost / t.budget) * 100)) : null;
+
+    if ($("#totals")) {
+      $("#totals").innerHTML = `
+        <div class="stat">
+          <b>${esc(t.cost ?? 0)} ${esc(t.currency || "")}</b>
+          <span>Estimated cost${t.budget ? ` of ${esc(t.budget)} budget` : ""}</span>
+          ${pct != null ? `<div class="budget-bar"><i style="width:${pct}%;background:${pct > 100 ? "var(--danger)" : "var(--ok)"}"></i></div>` : ""}
+        </div>
+        <div class="stat"><b>${esc(t.stops ?? 0)}</b><span>Scheduled Stops</span></div>
+        <div class="stat"><b>${esc(t.travel_minutes ?? 0)} min</b><span>Travel Time</span></div>
+        <div class="stat"><b>${esc(currentPlan.stats?.coordinator_steps ?? "–")}</b><span>Coordinator Steps (${esc(currentPlan.stats?.planner_revisions ?? 0)} revisions)</span></div>`;
+    }
+
+    renderTimeline();
 
     const opts = [];
     let idx = 0;
-    (p.days || []).forEach((d) => d.items.forEach((it) => {
+    (opt.days || []).forEach((d) => d.items.forEach((it) => {
       if (it.kind !== "busy") opts.push(`<option value="${idx}">${hm(it.start)} ${esc(it.title)}</option>`);
       idx++;
     }));
@@ -580,11 +1052,135 @@
       $("#replan-item").innerHTML = `<option value="">(Select affected stop — optional)</option>` + opts.join("");
     }
 
-    if (!$("#tab-map")?.classList.contains("hidden")) drawMap();
+    setTimeout(drawMap, 60);
   }
 
-  // ------------------------------------------------------------------ Export Actions
-  // 1. Calendar .ics generator
+  function renderActivityCard(it, num, cur) {
+    const isStop = ["meal", "snack", "activity", "event"].includes(it.kind);
+    const isTravel = it.kind === "travel";
+    let placeInfo = "";
+    if (it.place) {
+      const queryStr = encodeURIComponent((it.place.name || it.title) + " " + (it.place.address || ""));
+      const navUrl = `https://www.google.com/maps/search/?api=1&query=${queryStr}`;
+      placeInfo = `${it.place.address ? esc(it.place.address) : ""}${it.place.url ? ` · <a href="${esc(it.place.url)}" target="_blank" rel="noopener">Website</a>` : ""} · <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener">📍 Directions</a>${it.place.source ? ` · <span class="muted">via ${esc(it.place.source)}</span>` : ""}`;
+    }
+    const tr = it.travel ? `${esc(it.travel.km)} km · ${esc(it.travel.source || "road network")}` : "";
+
+    return `
+      <div class="activity-card${isTravel ? " travel" : ""}">
+        <div class="time">${hm(it.start)}–${hm(it.end)}</div>
+        <div class="icon-box">${isTravel && it.travel ? (MODE_ICON[it.travel.mode] || ICON.travel) : (ICON[it.kind] || "•")}</div>
+        <div>
+          <div class="title">${isStop ? num + ". " : ""}${esc(it.title)}</div>
+          <div class="meta">${placeInfo || tr}${it.notes ? " · " + esc(it.notes) : ""}</div>
+        </div>
+        <div class="cost">${money(it.cost, cur)}</div>
+      </div>`;
+  }
+
+  function renderTimeline() {
+    if (!currentPlan) return;
+    const opt = (currentPlan.options && currentPlan.options[activeOptionIdx]) || { days: currentPlan.days, totals: currentPlan.totals };
+    const timelineEl = $("#timeline");
+    if (!timelineEl) return;
+
+    const cur = opt.totals?.currency || currentPlan.totals?.currency || "INR";
+    const days = opt.days || [];
+
+    if (!days.length || days.every((d) => !d.items || !d.items.length)) {
+      timelineEl.innerHTML = `<div class="empty">The agents could not schedule any items in the available window.</div>`;
+      return;
+    }
+
+    let n = 0;
+    timelineEl.innerHTML = days.map((d) => {
+      // Priority 6: Items within each day strictly follow chronological order by start time!
+      const sortedItems = [...(d.items || [])].sort((a, b) => (a.start > b.start ? 1 : (a.start < b.start ? -1 : 0)));
+      return `
+        <div class="day-group">
+          <div class="day-date-title">📅 ${esc(new Date(d.date + "T00:00").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric", year: "numeric" }))}</div>
+          ${sortedItems.map((it) => renderActivityCard(it, ["meal", "snack", "activity", "event"].includes(it.kind) ? ++n : null, cur)).join("")}
+        </div>
+      `;
+    }).join("");
+  }
+
+  // Alternatives rendering & sorting
+  function renderAlternatives() {
+    if (!currentPlan) return;
+    const altsContainer = $("#alternatives");
+    if (!altsContainer) return;
+    const alts = [...(currentPlan.alternatives || [])];
+    if (!alts.length) {
+      $("#alternatives-wrapper")?.classList.add("hidden");
+      return;
+    }
+    $("#alternatives-wrapper")?.classList.remove("hidden");
+
+    if (currentAltSort === "price") {
+      alts.sort((a, b) => (a.est_cost ?? 9999) - (b.est_cost ?? 9999));
+    } else if (currentAltSort === "distance") {
+      alts.sort((a, b) => (a.distance_km ?? 99) - (b.distance_km ?? 99));
+    } else if (currentAltSort === "time") {
+      alts.sort((a, b) => (a.travel_min ?? 99) - (b.travel_min ?? 99));
+    }
+
+    const cur = currentPlan.totals?.currency || "INR";
+    altsContainer.innerHTML = `
+      <div class="alt-card-grid">
+        ${alts.map((a) => {
+          const costStr = a.est_cost != null && a.est_cost > 0 ? `💵 ~${a.est_cost} ${esc(cur)}` : "Free entry";
+          const distStr = a.distance_km != null ? `📍 ${a.distance_km} km` : "";
+          const timeStr = a.travel_min != null ? `⚡ ${a.travel_min} min` : "";
+          const queryStr = encodeURIComponent(a.name);
+          const navUrl = `https://www.google.com/maps/search/?api=1&query=${queryStr}`;
+          return `
+            <div class="alt-item-card">
+              <div class="alt-item-name">${esc(a.name)}</div>
+              <div class="alt-item-meta">
+                ${a.category ? `<span class="alt-badge">${esc(a.category)}</span>` : ""}
+                ${costStr ? `<span class="alt-badge">${costStr}</span>` : ""}
+                ${distStr ? `<span class="alt-badge">${distStr}</span>` : ""}
+                ${timeStr ? `<span class="alt-badge">${timeStr}</span>` : ""}
+                <a class="nav-link" href="${navUrl}" target="_blank" rel="noopener">Directions</a>
+              </div>
+            </div>`;
+        }).join("")}
+      </div>`;
+  }
+
+  // Alternatives sort pills listeners
+  $$("[data-alt-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      currentAltSort = btn.dataset.altSort;
+      $$("[data-alt-sort]").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      renderAlternatives();
+    });
+  });
+
+  // ------------------------------------------------------------------ Itinerary Actions
+  // Edit Plan: return to wizard keeping inputs
+  $("#btn-edit-plan")?.addEventListener("click", () => {
+    $("#results-view")?.classList.add("hidden");
+    $("#wizard-card")?.classList.remove("hidden");
+    goToStep(1);
+  });
+
+  // New Plan: clear and return to wizard Step 1
+  $("#btn-new-plan")?.addEventListener("click", () => {
+    if ($("#query")) $("#query").value = "";
+    if ($("#start")) $("#start").value = "";
+    if ($("#end")) $("#end").value = "";
+    commitments = [];
+    renderCommitments();
+    $("#results-view")?.classList.add("hidden");
+    $("#wizard-card")?.classList.remove("hidden");
+    goToStep(1);
+    showToast("Ready for a new plan!");
+  });
+
+  // Calendar .ics export
   $("#btn-export-ics")?.addEventListener("click", () => {
     if (!currentPlan) return alert("No active plan to export");
     const icsContent = generateICS(currentPlan);
@@ -639,7 +1235,7 @@
     return lines.join("\r\n");
   }
 
-  // 2. Copy Plan
+  // Copy Plan Text
   $("#btn-copy-plan")?.addEventListener("click", () => {
     if (!currentPlan) return alert("No active plan to copy");
     let text = `🗓️ LifePlan AI Itinerary\n${currentPlan.summary}\n\n`;
@@ -660,7 +1256,7 @@
     });
   });
 
-  // 3. Print / PDF
+  // Print / PDF
   $("#btn-print-plan")?.addEventListener("click", () => {
     window.print();
   });
@@ -669,7 +1265,7 @@
   $$("[data-replan]").forEach((b) => b.addEventListener("click", () => {
     if (!currentPlan) return;
     const kind = b.dataset.replan;
-    const text = $("#replan-text").value.trim();
+    const text = $("#replan-text")?.value.trim();
     const ev = { plan_id: currentPlan.plan_id, event: kind, details: text || b.textContent.trim() };
     const sel = $("#replan-item")?.value;
     if (sel && sel !== "") ev.item_index = +sel;
@@ -687,7 +1283,9 @@
         };
       }
     }
-    if (kind === "closed" && (!sel || sel === "")) return alert("Pick the affected venue item from the dropdown first");
+    if (kind === "closed" && (!sel || sel === "")) {
+      return alert("Pick the affected venue stop from the dropdown first");
+    }
     startRun("/api/runs/replan", ev, "Re-planning");
   }));
 
@@ -701,8 +1299,8 @@
       body: JSON.stringify({
         plan_id: currentPlan.plan_id,
         rating: +$("#rating").value,
-        liked: split($("#liked").value),
-        disliked: split($("#disliked").value)
+        liked: split($("#liked")?.value || ""),
+        disliked: split($("#disliked")?.value || "")
       })
     });
     const d = await res.json();
@@ -715,10 +1313,11 @@
     showToast("Feedback saved! Profile agent updated memory.");
   });
 
-  // ------------------------------------------------------------------ Map
+  // ------------------------------------------------------------------ Leaflet Map
   function drawMap() {
     if (!window.L) {
-      $("#map").innerHTML = "<div class='empty'>Map library could not load.</div>";
+      const mapEl = $("#map");
+      if (mapEl) mapEl.innerHTML = "<div class='empty'>Map library could not load.</div>";
       return;
     }
     if (!map) {
@@ -736,11 +1335,12 @@
 
     const pts = [];
     let n = 0;
-    currentPlan.days.forEach((d) => d.items.forEach((it) => {
+    const activeDays = (currentPlan.options && currentPlan.options[activeOptionIdx]?.days) || currentPlan.days || [];
+    activeDays.forEach((d) => d.items.forEach((it) => {
       if (!it.place || it.place.lat == null) return;
       const isStop = ["meal", "snack", "activity", "event"].includes(it.kind);
-      const label = isStop ? ++n : "H";
-      const icon = L.divIcon({ className: "", html: `<div class="num-icon">${label}</div>`, iconSize: [26, 26] });
+      const label = isStop ? ++n : "•";
+      const icon = L.divIcon({ className: "", html: `<div class="map-num-pin">${label}</div>`, iconSize: [26, 26] });
       L.marker([it.place.lat, it.place.lon], { icon })
         .bindPopup(`<b>${esc(it.title)}</b><br>${hm(it.start)}–${hm(it.end)}<br><small>${esc(it.place.address || "")}</small>`)
         .addTo(mapLayer);
@@ -748,10 +1348,14 @@
     }));
 
     if (pts.length > 1) {
-      L.polyline(pts, { color: "#4f46e5", weight: 3.5, dashArray: "6 6" }).addTo(mapLayer);
+      L.polyline(pts, { color: "#6558E8", weight: 3.5, dashArray: "6 6" }).addTo(mapLayer);
     }
     if (pts.length) {
       map.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
     }
   }
+
+  // Initial step setup
+  goToStep(1);
+  checkAutoCalendar();
 })();

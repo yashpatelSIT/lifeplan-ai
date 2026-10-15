@@ -6,6 +6,7 @@ Interactive API docs: /docs
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 import json
 import logging
 import queue
@@ -45,7 +46,9 @@ async def validation_error(_: Request, exc: RequestValidationError):
     return JSONResponse(status_code=422, content={"error": "invalid_request", "detail": problems})
 
 
-def _require_llm() -> None:
+def _require_llm(req: Optional[PlanRequest] = None) -> None:
+    if req and (req.dev_mock or get_settings().dev_mock_planning):
+        return
     if not get_settings().available_providers:
         raise HTTPException(503, "No LLM provider configured. Set GOOGLE_API_KEY and/or GROQ_API_KEY.")
 
@@ -62,11 +65,74 @@ def samples() -> list[dict]:
     return load_samples()
 
 
+@app.post("/api/extract-requirements")
+def extract_requirements(payload: dict) -> dict:
+    """Extract structured planning requirements and canonical schedule from natural language."""
+    from lifeplan.tools.nl_extractor import parse_natural_language_requirements
+    query = payload.get("query", "")
+    now_str = payload.get("now")
+    now = datetime.fromisoformat(now_str) if now_str else datetime.now()
+    picker_start = datetime.fromisoformat(payload["start"]) if payload.get("start") else None
+    picker_end = datetime.fromisoformat(payload["end"]) if payload.get("end") else None
+    return parse_natural_language_requirements(
+        query=query,
+        now=now,
+        picker_start=picker_start,
+        picker_end=picker_end,
+    )
+
+
+@app.get("/api/calendar/detect")
+def detect_calendar(tz: str = "Asia/Kolkata") -> dict:
+    """Automatically detect whether a local calendar file or synced feed is active."""
+    from lifeplan.tools import calendar as cal
+
+    ics_text, src_type, src_name = cal.detect_local_calendar()
+    if not ics_text:
+        return {
+            "detected": False,
+            "source_type": None,
+            "source_name": None,
+            "events_count": 0,
+            "upcoming_events": [],
+        }
+    now = datetime.now()
+    events = cal.parse_ics(ics_text, tz, now - timedelta(days=1), now + timedelta(days=7))
+    return {
+        "detected": True,
+        "source_type": src_type,
+        "source_name": src_name,
+        "events_count": len(events),
+        "upcoming_events": [
+            {
+                "title": e.get("title", "Busy"),
+                "start": e["start"].strftime("%Y-%m-%dT%H:%M"),
+                "end": e["end"].strftime("%Y-%m-%dT%H:%M"),
+                "location": e.get("location"),
+            }
+            for e in events[:12]
+        ],
+    }
+
+
+@app.post("/api/calendar/connect")
+async def connect_calendar(request: Request) -> dict:
+    """Connect a Google Calendar, Apple iCloud Calendar, or WebCal feed URL."""
+    from lifeplan.tools import calendar as cal
+
+    body = await request.json()
+    url = body.get("feed_url", "").strip()
+    ok, msg = cal.save_calendar_feed(url)
+    if not ok:
+        raise HTTPException(400, msg)
+    return {"ok": True, "message": msg}
+
+
 # ------------------------------------------------------------------ synchronous API
 @app.post("/api/plan", response_model=PlanResult)
 def plan(req: PlanRequest) -> PlanResult:
     """Run the full multi-agent planning process and return the final plan (may take 30–120 s)."""
-    _require_llm()
+    _require_llm(req)
     return service.run_plan(req)
 
 
@@ -80,7 +146,7 @@ def replan(ev: ReplanEvent) -> PlanResult:
 # ------------------------------------------------------------------ streaming API (used by the UI)
 @app.post("/api/runs")
 def start_run(req: PlanRequest) -> dict:
-    _require_llm()
+    _require_llm(req)
     trace = service.runs.start(lambda tr: service.run_plan(req, tr))
     return {"run_id": trace.run_id}
 

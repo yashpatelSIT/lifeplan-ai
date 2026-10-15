@@ -193,8 +193,18 @@ def build_graph(ctx: RunContext):
 
     def finalize_node(state: PlanState) -> dict:
         val = validate_state(state) if state.get("draft") else None
-        status = "failed" if not state.get("draft") else ("ok" if val and val["ok"] and not state.get("degraded")
-                                                           else "partial")
+        has_high_issue = val and any(i.get("severity") == "high" for i in val.get("issues", []))
+        draft_stops = sum(
+            1 for d in (state.get("draft") or {}).get("days", [])
+            for it in d.get("items", [])
+            if it.get("kind") not in ("travel", "busy")
+        )
+        if not state.get("draft") or has_high_issue or draft_stops == 0:
+            status = "failed"
+        elif val and val["ok"] and not state.get("degraded"):
+            status = "ok"
+        else:
+            status = "partial"
         trace.emit("final", coordinator.NAME, state.get("final_summary") or "plan finalised", status=status)
         return {"validation": val, "status": status}
 

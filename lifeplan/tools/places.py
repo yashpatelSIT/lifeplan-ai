@@ -12,6 +12,7 @@ import re
 from typing import Iterable, Optional
 
 from lifeplan.config import get_settings
+from lifeplan.tools.decision_engine import is_irrelevant_venue
 from lifeplan.tools.geo import haversine_km
 from lifeplan.tools.http import ExternalAPIError, request_json
 
@@ -262,10 +263,13 @@ def _overpass_search(lat: float, lon: float, cats: list[str], radius_m: int, lim
     return out
 
 
-def _rank(items: list[dict], limit_per_cat: int) -> list[dict]:
+def _rank(items: list[dict], limit_per_cat: int, query: str = "") -> list[dict]:
     seen = set()
     by_cat: dict[str, list[dict]] = {}
     for it in sorted(items, key=lambda x: (x.get("opening_hours") is None, x.get("distance_km") or 99)):
+        is_irrel, _ = is_irrelevant_venue(it, user_query=query)
+        if is_irrel:
+            continue
         key = (it["name"].lower(), round(it["lat"], 3), round(it["lon"], 3))
         if key in seen:
             continue
@@ -283,6 +287,7 @@ def search_places(
     interests: Iterable[str],
     radius_km: float = 5.0,
     limit_per_category: int = 6,
+    query: str = "",
 ) -> dict:
     """Find real venues near (lat, lon). Returns {'ok', 'source', 'places': [...], 'warnings': [...]}."""
     cats = normalise_interests(interests) or ["food", "attractions"]
@@ -292,8 +297,10 @@ def search_places(
         try:
             items = fn(lat, lon, cats, radius_m, limit_per_category * 2)
             if items:
-                return {"ok": True, "source": name, "categories": cats,
-                        "places": _rank(items, limit_per_category), "warnings": warnings}
+                ranked = _rank(items, limit_per_category, query=query)
+                if ranked:
+                    return {"ok": True, "source": name, "categories": cats,
+                            "places": ranked, "warnings": warnings}
             warnings.append(f"{name}: no results within {radius_km} km")
         except ExternalAPIError as exc:
             warnings.append(f"{name} unavailable ({exc}); trying fallback")

@@ -17,6 +17,7 @@ from lifeplan.agents.base import RunContext, Workspace, make_tool, run_react_age
 from lifeplan.agents.shared import (TRIP_MODES, compact_candidate, compact_plan, request_brief, travel_model,
                                     validate_state)
 from lifeplan.tools import calendar as cal
+from lifeplan.tools.decision_engine import ensure_intercity_legs
 from lifeplan.tools.places import normalise_interests
 from lifeplan.tools.scheduler import Window, build_schedule as solve, fmt, parse_dt
 
@@ -38,6 +39,7 @@ resolved and how, and anything you could not fit."""
 
 
 def _trip_windows(state: dict) -> list[Window]:
+    ensure_intercity_legs(state)
     w = state["window"]
     start, end = parse_dt(w["start"]), parse_dt(w["end"])
     log = state.get("logistics") or {}
@@ -47,16 +49,19 @@ def _trip_windows(state: dict) -> list[Window]:
                  default=None)
     depart = min((parse_dt(f["start"]) for f in fixed if parse_dt(f["start"]) >= end - timedelta(hours=36)),
                  default=None)
+    is_flight = any(f.get("kind") == "flight" for f in fixed)
+    arr_buffer = 45 if is_flight else 15
+    dep_buffer = 120 if is_flight else 20
     windows = []
     d = start.date()
     while d <= end.date():
         ws_ = max(datetime.combine(d, time(9, 0)), start)
         we = min(datetime.combine(d, time(21, 30)), end)
         if arrive and arrive.date() == d:
-            ws_ = max(ws_, arrive + timedelta(minutes=75))
+            ws_ = max(ws_, arrive + timedelta(minutes=arr_buffer))
         if depart and depart.date() == d:
-            we = min(we, depart - timedelta(minutes=150))
-        if (we - ws_).total_seconds() >= 3600:
+            we = min(we, depart - timedelta(minutes=dep_buffer))
+        if (we - ws_).total_seconds() >= 1800:
             windows.append(Window(ws_, we, base, True))
         d += timedelta(days=1)
     return windows
@@ -121,9 +126,23 @@ def build_tools(ws: Workspace) -> list:
                 chosen.append({**pool[cid], "priority": 0.9})
         unknown = [str(p).rpartition(":")[0] or p for p in priorities if (str(p).rpartition(":")[0] or p) not in pool]
         if not chosen:
+            shortlist_ids = ws.get("shortlist_ids") or []
+            for cid in shortlist_ids:
+                if cid in pool and not pool[cid].get("unavailable") and cid not in exclude and pool[cid].get("kind") != "hotel":
+                    chosen.append({**pool[cid], "priority": 0.7})
+        if not chosen:
             return {"ok": False, "error": "no valid candidate ids in priorities", "unknown_ids": unknown[:10]}
 
-        trip = ws.get("mode") in TRIP_MODES
+        origin = ws.get("origin") or {}
+        dest = ws.get("destination") or {}
+        origin_city = (origin.get("city") or origin.get("name") or "").strip().lower()
+        dest_city = (dest.get("city") or dest.get("name") or "").strip().lower()
+        is_intercity = (ws.get("mode") in TRIP_MODES) or bool(origin_city and dest_city and origin_city != dest_city)
+        if is_intercity:
+            ensure_intercity_legs(ws.state)
+            ws.set("logistics", ws.state.get("logistics"))
+        trip = (ws.get("mode") in TRIP_MODES) or is_intercity
+
         if windows:
             base = ((ws.get("logistics") or {}).get("hotel") or ws.get("destination")) if trip else ws.get("origin")
             wins = []
@@ -141,7 +160,7 @@ def build_tools(ws: Workspace) -> list:
         tm = travel_model(ws.state)
         wet = set((ws.get("weather") or {}).get("wet_hours") or [])
         log = ws.get("logistics") or {}
-        fixed = log.get("fixed_items") or []
+        fixed = list(log.get("fixed_items") or [])
         hotel = log.get("hotel")
         fixed_cost = sum(float((f.get("cost") or {}).get("amount") or 0) for f in fixed)
         nights = max(0, (parse_dt(ws.get("window")["end"]).date() - parse_dt(ws.get("window")["start"]).date()).days) if trip else 0
@@ -175,6 +194,28 @@ def build_tools(ws: Workspace) -> list:
         totals["cost"] = round(res.totals["cost"])
         totals["currency"] = ws.get("currency")
         totals["budget"] = ws.get("budget")
+
+        # Deterministic Smart Decision Engine: strictly enforce total budget limit
+        budget_limit = ws.get("budget")
+        if budget_limit is not None and budget_limit > 0 and totals["cost"] > budget_limit:
+            for d in ordered:
+                removable = [
+                    it for it in d["items"]
+                    if it.get("kind") not in ("travel", "hotel", "flight", "train", "busy")
+                    and it.get("candidate_id") not in must_include
+                ]
+                removable.sort(key=lambda it: pool.get(it.get("candidate_id", ""), {}).get("priority", 0.5))
+                for it in removable:
+                    if totals["cost"] <= budget_limit:
+                        break
+                    d["items"].remove(it)
+                    item_cost = float((it.get("cost") or {}).get("amount") or 0)
+                    totals["cost"] = round(totals["cost"] - item_cost)
+                    res.unscheduled.append({
+                        "id": it.get("candidate_id"),
+                        "reason": f"Pruned by Smart Decision Engine to strictly satisfy budget limit ({budget_limit})"
+                    })
+
         draft = {"days": ordered, "totals": totals, "unscheduled": res.unscheduled,
                  "pace": pace or req.get("pace", "balanced"), "travel_mode": tm.mode,
                  "priorities": {c["id"]: c["priority"] for c in chosen}}

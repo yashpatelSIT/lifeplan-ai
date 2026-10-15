@@ -43,7 +43,9 @@ class BusyBlock(BaseModel):
     start: datetime
     end: datetime
     title: str = "Busy"
+    date: Optional[str] = None
     location: Optional[str] = None
+    notes: Optional[str] = None
 
     @model_validator(mode="after")
     def check_order(self):
@@ -67,12 +69,14 @@ class PlanRequest(BaseModel):
     travel_modes: list[TravelMode] = Field(default_factory=lambda: ["walk", "transit", "cab"])
     party_size: int = Field(1, ge=1, le=20)
     pace: Literal["relaxed", "balanced", "packed"] = "balanced"
+    commitments_mode: Literal["plan_around", "ignore"] = "plan_around"
     busy_blocks: list[BusyBlock] = Field(default_factory=list, max_length=200)
     calendar_ics: Optional[str] = Field(None, max_length=500_000, description="Raw .ics calendar text")
     use_learned_schedule: bool = Field(True, description="Let the Profile agent predict busy time from history")
     profile_id: str = Field("demo", max_length=64, pattern=r"^[A-Za-z0-9_\-]+$")
     timezone: Optional[str] = None
     now: Optional[datetime] = Field(None, description="Override 'current time' (testing / demos)")
+    dev_mock: bool = Field(False, description="Run in demonstration mock mode without consuming external API quota")
 
     @field_validator("interests")
     @classmethod
@@ -86,7 +90,14 @@ class PlanRequest(BaseModel):
         if self.start and self.end and (self.end - self.start).days > 21:
             raise ValueError("planning window is limited to 21 days")
         if not self.location and not self.coordinates:
-            raise ValueError("provide either 'location' (e.g. 'Pune') or 'coordinates'")
+            from lifeplan.tools.nl_extractor import extract_locations
+            orig, dest, _ = extract_locations(self.query)
+            if orig:
+                self.location = orig
+            if dest and not self.destination:
+                self.destination = dest
+            if not self.location and not self.coordinates:
+                raise ValueError("provide either 'location' (e.g. 'Pune') or 'coordinates'")
         return self
 
 
@@ -158,6 +169,23 @@ class ConflictRecord(BaseModel):
     resolution: Optional[str] = None
 
 
+class CostLedger(BaseModel):
+    accommodation: float = 0.0
+    intercity_transport: float = 0.0
+    local_transport: float = 0.0
+    food_and_dining: float = 0.0
+    activities_and_entries: float = 0.0
+    contingency: float = 0.0
+    total_cost: float = 0.0
+    budget: Optional[float] = None
+    remaining_budget: Optional[float] = None
+    currency: str = "INR"
+    is_within_budget: bool = True
+    verified_items_count: int = 0
+    estimated_items_count: int = 0
+    breakdown_notes: list[str] = Field(default_factory=list)
+
+
 class PlanResult(BaseModel):
     plan_id: str
     run_id: str
@@ -167,9 +195,12 @@ class PlanResult(BaseModel):
     timezone: str
     days: list[DayPlan] = Field(default_factory=list)
     totals: dict = Field(default_factory=dict)
+    cost_ledger: Optional[CostLedger] = None
+    requirements: Optional[dict] = None
     weather: Optional[dict] = None
     conflicts: list[ConflictRecord] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    options: list[dict] = Field(default_factory=list)
     alternatives: list[dict] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
     stats: dict = Field(default_factory=dict)

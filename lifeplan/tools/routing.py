@@ -46,18 +46,55 @@ def normalise_mode(mode: str) -> str:
             "bus": "transit", "metro": "transit", "public_transport": "transit", "bicycle": "bike"}.get(mode, mode)
 
 
+def validate_coordinates(coord: tuple[float, float]) -> tuple[float, float]:
+    """Validate and normalize (lat, lon) coordinates, detecting swapped order."""
+    lat, lon = float(coord[0]), float(coord[1])
+    # Detect swapped coordinates: for Indian sub-continent (lat 8..37, lon 68..97),
+    # if lat > 50 and lon < 40, they are inverted.
+    if lat > 50.0 and lon < 40.0:
+        lat, lon = lon, lat
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        raise ValueError(f"Invalid geographical coordinates: ({lat}, {lon})")
+    return lat, lon
+
+
+def is_plausible_route(a: tuple[float, float], b: tuple[float, float], km: float, minutes: float, mode: str) -> tuple[bool, Optional[str]]:
+    """Verify that a calculated route between two points is geographically and physically plausible."""
+    direct_km = haversine_km(a[0], a[1], b[0], b[1])
+    if km < direct_km * 0.9 and direct_km > 0.1:
+        return False, f"Route distance ({km:.1f} km) is shorter than straight-line distance ({direct_km:.1f} km)"
+    if km > direct_km * 4.0 and direct_km > 5.0:
+        return False, f"Route distance ({km:.1f} km) indicates excessive detour from straight-line ({direct_km:.1f} km)"
+    speed = (km / (minutes / 60.0)) if minutes > 0 else 0
+    if mode in ("walk", "foot") and speed > 10.0:
+        return False, f"Walking speed of {speed:.1f} km/h is implausibly high"
+    if mode in ("drive", "cab", "car") and speed > 160.0:
+        return False, f"Driving speed of {speed:.1f} km/h is implausibly high"
+    # Reject implausibly slow speeds (e.g. 1,204 minutes for 5 km = 0.25 km/h driving)
+    if km > 0.5 and minutes > 60 and speed < 2.0:
+        return False, f"Travel speed of {speed:.2f} km/h is implausibly low (e.g. {round(minutes)} min for {km:.1f} km)"
+    if km < 20.0 and minutes > 360:
+        return False, f"Travel duration of {round(minutes)} min is excessive for local distance of {km:.1f} km"
+    return True, None
+
+
 def estimate_leg(a: tuple[float, float], b: tuple[float, float], mode: str) -> dict:
+    a = validate_coordinates(a)
+    b = validate_coordinates(b)
     km = haversine_km(a[0], a[1], b[0], b[1]) * DETOUR
     mode = normalise_mode(mode)
     speed = SPEED_KMH.get(mode, 20)
     minutes = km / speed * 60 + (OVERHEAD_MIN.get(mode, 5) if km > 0.05 else 0)
-    return {"ok": True, "mode": mode, "minutes": round(minutes, 1), "km": round(km, 2), "source": "estimate"}
+    return {"ok": True, "mode": mode, "minutes": round(minutes, 1), "km": round(km, 2),
+            "source": "estimate", "status": "estimate"}
 
 
 def _geoapify_leg(a, b, mode) -> Optional[dict]:
     key = get_settings().geoapify_api_key
     if not key or mode not in GEOAPIFY_MODE:
         return None
+    a = validate_coordinates(a)
+    b = validate_coordinates(b)
     params = {"waypoints": f"{a[0]},{a[1]}|{b[0]},{b[1]}", "mode": GEOAPIFY_MODE[mode], "apiKey": key}
     data = request_json("geoapify-routing", "GET", GEOAPIFY_ROUTING, params=params, cache_ttl=1800)
     feats = data.get("features") or []
@@ -65,14 +102,20 @@ def _geoapify_leg(a, b, mode) -> Optional[dict]:
         return None
     p = feats[0]["properties"]
     minutes = p["time"] / 60 + (5 if mode == "cab" else 0)
-    return {"ok": True, "mode": mode, "minutes": round(minutes, 1), "km": round(p["distance"] / 1000, 2),
-            "source": "geoapify"}
+    km = p["distance"] / 1000
+    plausible, _ = is_plausible_route(a, b, km, minutes, mode)
+    if not plausible:
+        return None
+    return {"ok": True, "mode": mode, "minutes": round(minutes, 1), "km": round(km, 2),
+            "source": "geoapify", "status": "verified"}
 
 
 def _osrm_leg(a, b, mode) -> Optional[dict]:
     profile = OSRM_PROFILE.get(mode)
     if not profile:
         return None
+    a = validate_coordinates(a)
+    b = validate_coordinates(b)
     url = OSRM_BASE.format(profile=profile, service="route", coords=f"{a[1]},{a[0]};{b[1]},{b[0]}")
     data = request_json("osrm", "GET", url, params={"overview": "false"}, cache_ttl=1800)
     routes = data.get("routes") or []
@@ -83,12 +126,18 @@ def _osrm_leg(a, b, mode) -> Optional[dict]:
         minutes += 5
     if mode == "transit":  # OSRM has no transit: scale the car time and add waiting time
         minutes = minutes * 1.6 + 10
-    return {"ok": True, "mode": mode, "minutes": round(minutes, 1), "km": round(routes[0]["distance"] / 1000, 2),
-            "source": "osrm" if mode != "transit" else "osrm+transit-model"}
+    km = routes[0]["distance"] / 1000
+    plausible, _ = is_plausible_route(a, b, km, minutes, mode)
+    if not plausible:
+        return None
+    return {"ok": True, "mode": mode, "minutes": round(minutes, 1), "km": round(km, 2),
+            "source": "osrm" if mode != "transit" else "osrm+transit-model", "status": "verified"}
 
 
 def travel_time(a: tuple[float, float], b: tuple[float, float], mode: str = "cab") -> dict:
     """Door-to-door travel time between two (lat, lon) points."""
+    a = validate_coordinates(a)
+    b = validate_coordinates(b)
     mode = normalise_mode(mode)
     warnings = []
     for fn in (_geoapify_leg, _osrm_leg):

@@ -168,6 +168,8 @@ def validate_state(state: dict) -> dict:
     issues += validator.check_calendar(draft, av.get("busy", []), av.get("predicted_busy", []), state.get("window"))
     issues += validator.check_logistics(draft, tm.leg, state.get("budget"), state.get("origin"), day_bases(state))
     issues += validator.check_venues(draft, state.get("candidates") or {}, wet)
+    issues += validator.check_intercity_and_deadlines(draft, state)
+    issues += validator.check_hotel_requirements(draft, state)
     return validator.summarise(issues)
 
 

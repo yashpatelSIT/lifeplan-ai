@@ -37,11 +37,10 @@ Call check_calendar_conflicts, then reply with a verdict: APPROVE or REVISE, and
 
 def _ics_text(ws: Workspace) -> str | None:
     req = ws.get("request") or {}
-    if req.get("calendar_ics"):
-        return req["calendar_ics"]
-    if req.get("use_learned_schedule", True) and req.get("profile_id", "demo") == "demo":
-        return ws.ctx.sample_calendar  # demo user's historical calendar shipped in samples/
-    return None
+    if req.get("commitments_mode") == "ignore":
+        return None
+    # Only return calendar_ics if explicitly provided by user in this plan request
+    return req.get("calendar_ics") or None
 
 
 def _profile_work_blocks(profile: dict, start: datetime, end: datetime) -> list[dict]:
@@ -61,10 +60,76 @@ def _profile_work_blocks(profile: dict, start: datetime, end: datetime) -> list[
     return out
 
 
+def calculate_availability(
+    req: dict,
+    profile: dict,
+    window: dict,
+    tz: str = "UTC",
+    start: str = "",
+    end: str = "",
+    min_minutes: int = 45,
+    use_prediction: bool = True,
+) -> dict:
+    """Compute the user's free windows between `start` and `end` (ISO local time, default = planning window)
+    by combining explicit calendar events and user-entered commitments."""
+    s = parse_dt(start or window["start"])
+    e = parse_dt(end or window["end"])
+    if e <= s:
+        return {"ok": False, "error": "end must be after start"}
+
+    commitments_mode = req.get("commitments_mode", "plan_around")
+    busy_blocks = req.get("busy_blocks") or req.get("commitments") or []
+    ics = None if commitments_mode == "ignore" else (req.get("calendar_ics") or None)
+
+    # Priority 1: If user chose to ignore commitments, or if no commitments were entered:
+    # The calendar must be treated as completely empty with zero constraints (100% free window).
+    if commitments_mode == "ignore" or (not busy_blocks and not ics):
+        total_mins = int((e - s).total_seconds() // 60)
+        return {
+            "ok": True,
+            "window": {"start": fmt(s), "end": fmt(e)},
+            "busy": [],
+            "unconfirmed_events": [],
+            "predicted_busy": [],
+            "free_windows": [{"start": fmt(s), "end": fmt(e), "minutes": total_mins}],
+        }
+
+    # Otherwise, only explicitly entered commitments and explicit calendar constrain schedule
+    events = cal.parse_ics(ics, tz, s - timedelta(days=1), e + timedelta(days=1)) if ics else []
+    manual = []
+    for b in busy_blocks:
+        b_s = parse_dt(b["start"]) if isinstance(b["start"], str) else b["start"]
+        b_e = parse_dt(b["end"]) if isinstance(b["end"], str) else b["end"]
+        manual.append({
+            "start": b_s,
+            "end": b_e,
+            "title": b.get("title") or "Commitment",
+            "location": b.get("location"),
+            "notes": b.get("notes"),
+        })
+
+    commute = int((profile or {}).get("commute_minutes") or 0)
+    commute_blocks = []
+    for ev in events + manual:
+        text = f"{ev['title']} {ev.get('location') or ''}".lower()
+        if commute and any(k in text for k in ("work", "office", "college", "class", "lecture", "meeting", "lab", "sync")):
+            commute_blocks.append({
+                "start": ev["end"],
+                "end": ev["end"] + timedelta(minutes=commute),
+                "title": f"Commute after {ev['title']}"
+            })
+
+    av = cal.availability(s, e, events, manual + commute_blocks, None, min_minutes)
+    return {"ok": True, **av}
+
+
+compute_availability = calculate_availability
+
+
 def build_tools(ws: Workspace, review: bool = False) -> list:
     ctx = ws.ctx
     req = ws.get("request") or {}
-    tz = ws.get("timezone")
+    tz = ws.get("timezone") or (ws.get("profile") or {}).get("timezone") or "UTC"
 
     def get_profile() -> dict:
         """Return the stored user profile: home/work locations, working hours, commute, interests, dislikes,
@@ -78,7 +143,7 @@ def build_tools(ws: Workspace, review: bool = False) -> list:
         weeks. Returns predicted busy blocks per weekday with a confidence score and frequent locations."""
         ics = _ics_text(ws)
         if not ics:
-            return {"ok": False, "error": "no calendar history available; rely on profile work_hours and user input"}
+            return {"ok": False, "error": "no calendar history available; rely on user-entered commitments"}
         now = ctx.now
         history = cal.parse_ics(ics, tz, now - timedelta(weeks=max(1, min(weeks_back, 12))), now)
         routine = cal.learn_routine(history)
@@ -88,38 +153,21 @@ def build_tools(ws: Workspace, review: bool = False) -> list:
     def compute_availability(start: str = "", end: str = "", min_minutes: int = 45,
                              use_prediction: bool = True) -> dict:
         """Compute the user's free windows between `start` and `end` (ISO local time, default = planning window)
-        by combining calendar events, user-entered busy blocks, the learned routine (if use_prediction) and
-        the commute time after work/college. Stores the result on the shared blackboard."""
+        by combining explicit calendar events and user-entered commitments. Stores the result on the shared blackboard."""
         w = ws.get("window") or {}
-        s = parse_dt(start or w["start"])
-        e = parse_dt(end or w["end"])
-        if e <= s:
-            return {"ok": False, "error": "end must be after start"}
-        ics = _ics_text(ws)
-        events = cal.parse_ics(ics, tz, s - timedelta(days=1), e + timedelta(days=1)) if ics else []
-        manual = [{"start": parse_dt(b["start"]), "end": parse_dt(b["end"]), "title": b.get("title", "Busy")}
-                  for b in req.get("busy_blocks", [])]
-        routine = ws.get("routine") if use_prediction and req.get("use_learned_schedule", True) else None
-        profile = ws.get("profile") or {}
-        # commute: after a work/college event the user still has to travel home
-        commute = int(profile.get("commute_minutes") or 0)
-        commute_blocks = []
-        for ev in events + manual:
-            text = f"{ev['title']} {ev.get('location') or ''}".lower()
-            if commute and any(k in text for k in ("work", "office", "college", "class", "lecture", "meeting", "lab")):
-                commute_blocks.append({"start": ev["end"], "end": ev["end"] + timedelta(minutes=commute),
-                                       "title": f"Commute after {ev['title']}"})
-        av = cal.availability(s, e, events, manual + commute_blocks, routine, min_minutes)
-        if not ics and use_prediction:
-            # manual mode: no calendar, so the profile's working hours are the prediction
-            pred = _profile_work_blocks(profile, s, e)
-            busy = [(parse_dt(b["start"]), parse_dt(b["end"])) for b in av["busy"]] + [(p["start"], p["end"]) for p in pred]
-            av["predicted_busy"] = [{"start": fmt(p["start"]), "end": fmt(p["end"]), "title": p["title"],
-                                     "confidence": p["confidence"]} for p in pred if p["end"] > s and p["start"] < e]
-            av["free_windows"] = [{"start": fmt(a), "end": fmt(b), "minutes": int((b - a).total_seconds() // 60)}
-                                  for a, b in cal.free_windows(busy, s, e, min_minutes)]
-        ws.set("availability", av)
-        return {"ok": True, **av}
+        res = calculate_availability(
+            req=req,
+            profile=ws.get("profile") or {},
+            window=w,
+            tz=tz,
+            start=start,
+            end=end,
+            min_minutes=min_minutes,
+            use_prediction=use_prediction,
+        )
+        if res.get("ok"):
+            ws.set("availability", res)
+        return res
 
     def check_holidays(country_code: str = "IN", year: int = 0) -> dict:
         """List public holidays for a country (ISO code) and year; holidays usually free the user from work."""

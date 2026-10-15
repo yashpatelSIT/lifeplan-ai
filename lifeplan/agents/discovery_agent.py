@@ -17,6 +17,7 @@ from lifeplan.agents.shared import compact_candidate, request_brief
 from lifeplan.tools import opening_hours, validator
 from lifeplan.tools import search as web
 from lifeplan.tools import weather as wx
+from lifeplan.tools.decision_engine import build_shortlist, filter_candidates
 from lifeplan.tools.geo import geocode, haversine_km
 from lifeplan.tools.places import CATEGORIES, normalise_interests, search_places
 from lifeplan.tools.scheduler import parse_dt
@@ -75,16 +76,35 @@ def _register(ws: Workspace, places: list[dict], anchor: dict) -> list[dict]:
     profile = ws.get("profile") or {}
     weights = profile.get("learned_weights") or {}
     dislikes = set(normalise_interests(profile.get("dislikes") or []))
-    out = []
+    req = ws.get("request") or {}
+    window = ws.get("window")
+
+    candidates_to_eval = []
     for p in places:
         if p["category"] in dislikes:
             continue
         p = dict(p)
-        p["est_cost"] = round(p.pop("est_cost_inr", 0) * rate * (ws.get("request") or {}).get("party_size", 1))
+        p["est_cost"] = round(p.pop("est_cost_inr", 0) * rate * req.get("party_size", 1))
         p["distance_km"] = round(haversine_km(anchor["lat"], anchor["lon"], p["lat"], p["lon"]), 2)
         p["learned_weight"] = weights.get(p["category"])
+        candidates_to_eval.append(p)
+
+    valid_places, rejected = filter_candidates(candidates_to_eval, req, profile=profile, window=window)
+    out = []
+    for p in valid_places:
         ws.add_candidate(p)
         out.append(compact_candidate(p))
+
+    all_cands = [c for c in (ws.get("candidates") or {}).values() if not c.get("unavailable") and c.get("kind") != "hotel"]
+    if all_cands:
+        weather = ws.get("weather")
+        shortlist, reserve = build_shortlist(
+            all_cands, req, profile=profile, weather=weather,
+            shortlist_size=5, anchor_lat=anchor.get("lat"), anchor_lon=anchor.get("lon")
+        )
+        ws.set("shortlist_ids", [c["id"] for c in shortlist])
+        ws.set("reserve_ids", [c["id"] for c in reserve])
+
     return out
 
 
@@ -96,11 +116,14 @@ def build_tools(ws: Workspace, review: bool = False) -> list:
         anchor = _anchor(ws, near)
         if not anchor:
             return {"ok": False, "error": "no location to search around"}
-        res = search_places(anchor["lat"], anchor["lon"], interests, radius_km=radius_km, limit_per_category=6)
+        q = (ws.get("request") or {}).get("query", "")
+        res = search_places(anchor["lat"], anchor["lon"], interests, radius_km=radius_km, limit_per_category=6, query=q)
         if not res["ok"]:
             return {"ok": False, "error": "no venues found", "warnings": res["warnings"]}
         found = _register(ws, res["places"], anchor)
+        shortlist_ids = ws.get("shortlist_ids") or []
         return {"ok": True, "source": res["source"], "near": anchor.get("name"), "count": len(found),
+                "shortlist_count": len(shortlist_ids), "shortlist_ids": shortlist_ids,
                 "categories": res["categories"], "places": found[:24], "warnings": res["warnings"]}
 
     def find_events(when: str = "today", topic: str = "") -> dict:
@@ -173,7 +196,8 @@ def build_tools(ws: Workspace, review: bool = False) -> list:
         anchor = _anchor(ws, near)
         if not anchor:
             return {"ok": False, "error": "unknown anchor"}
-        res = search_places(anchor["lat"], anchor["lon"], [category], radius_km=radius_km, limit_per_category=10)
+        q = (ws.get("request") or {}).get("query", "")
+        res = search_places(anchor["lat"], anchor["lon"], [category], radius_km=radius_km, limit_per_category=10, query=q)
         s, e = parse_dt(start), parse_dt(end)
         good = []
         for p in res.get("places", []):

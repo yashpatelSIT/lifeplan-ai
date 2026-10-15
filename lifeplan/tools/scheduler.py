@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Optional
 
 from lifeplan.tools import opening_hours
+from lifeplan.tools.geo import haversine_km
 
 PACE_BUFFER = {"relaxed": 20, "balanced": 10, "packed": 5}
 MEAL_GAP_MIN = 150
@@ -219,7 +220,7 @@ def build_schedule(
                     "start": fmt(dep), "end": fmt(dep + timedelta(minutes=s.travel_min)), "kind": "travel",
                     "title": f"{s.travel_mode.title()} to {s.cand['name']}",
                     "travel": {"mode": s.travel_mode, "minutes": round(s.travel_min), "km": round(s.travel_km, 1),
-                               "source": s.travel_source},
+                               "source": s.travel_source, "status": "verified" if s.travel_source in ("osrm", "geoapify", "matrix") else "estimate"},
                     "cost": {"amount": round(s.leg_cost), "estimate": True},
                 })
             items.append({
@@ -234,16 +235,19 @@ def build_schedule(
             prev_end = s.end
         if stops and back_target:
             last = stops[-1].cand
-            leg = travel(last, back_target)
-            items.append({
-                "start": fmt(stops[-1].end), "end": fmt(stops[-1].end + timedelta(minutes=leg["minutes"])),
-                "kind": "travel", "title": f"{leg.get('mode', 'travel').title()} back to {back_target.get('name', 'base')}",
-                "travel": {"mode": leg.get("mode"), "minutes": round(leg["minutes"]), "km": round(leg.get("km") or 0, 1),
-                           "source": leg.get("source")},
-                "cost": {"amount": round(float(leg.get("cost") or 0)), "estimate": True},
-            })
-            spent += float(leg.get("cost") or 0)
-            total_travel += leg["minutes"]
+            # Prevent duplicate intercity returns (>50 km from local stop)
+            dist_to_back = haversine_km(last["lat"], last["lon"], back_target["lat"], back_target["lon"]) if (last.get("lat") and back_target.get("lat")) else 0
+            if dist_to_back <= 50.0:
+                leg = travel(last, back_target)
+                items.append({
+                    "start": fmt(stops[-1].end), "end": fmt(stops[-1].end + timedelta(minutes=leg["minutes"])),
+                    "kind": "travel", "title": f"{leg.get('mode', 'travel').title()} back to {back_target.get('name', 'base')}",
+                    "travel": {"mode": leg.get("mode"), "minutes": round(leg["minutes"]), "km": round(leg.get("km") or 0, 1),
+                               "source": leg.get("source"), "status": leg.get("status", "verified" if leg.get("source") in ("osrm", "geoapify", "matrix") else "estimate")},
+                    "cost": {"amount": round(float(leg.get("cost") or 0)), "estimate": True},
+                })
+                spent += float(leg.get("cost") or 0)
+                total_travel += leg["minutes"]
         result.days.append({"date": w.start.date().isoformat(), "window": [fmt(w.start), fmt(w.end)],
                             "items": items})
 

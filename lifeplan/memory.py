@@ -17,7 +17,7 @@ DEMO_PROFILE = {
     "name": "Demo user",
     "home": {"name": "Home (Shivajinagar, Pune)", "lat": 18.5308, "lon": 73.8475},
     "work": {"name": "College (Lavale, Pune)", "lat": 18.5404, "lon": 73.7262},
-    "work_hours": {"days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "start": "09:00", "end": "17:30"},
+    "work_hours": {},
     "commute_minutes": 45,
     "interests": ["food", "cafe", "culture", "nature", "live music"],
     "dislikes": [],

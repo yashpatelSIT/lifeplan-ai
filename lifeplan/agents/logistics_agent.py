@@ -13,6 +13,7 @@ from lifeplan.agents.base import RunContext, Workspace, make_tool, run_react_age
 from lifeplan.agents.shared import compact_candidate, request_brief, travel_model
 from lifeplan.tools import routing, validator
 from lifeplan.tools import travel as tv
+from lifeplan.tools.decision_engine import extract_min_star_rating, filter_hotels_by_star_rating
 from lifeplan.tools.scheduler import parse_dt
 
 NAME = "logistics"
@@ -80,10 +81,31 @@ def build_tools(ws: Workspace, review: bool = False) -> list:
         """Compute real travel times between the start point and all given candidates (one road-network API call).
         The Planner's scheduler uses this matrix. Pass up to 18 candidate ids."""
         cands = ws.get("candidates") or {}
-        ids = [c for c in candidate_ids if c in cands][:18]
+        ids = [c for c in candidate_ids if c in cands]
+        shortlist_ids = ws.get("shortlist_ids") or []
+        if shortlist_ids:
+            prioritized = [cid for cid in shortlist_ids if cid in cands]
+            for cid in ids:
+                if cid not in prioritized and cid in cands:
+                    prioritized.append(cid)
+            ids = prioritized[:8]
+        else:
+            ids = ids[:8]
+
         if not ids:
             return {"ok": False, "error": "no known candidate ids"}
         m = routing.normalise_mode(mode or (ws.get("logistics") or {}).get("mode") or "cab")
+
+        # Reuse existing matrix if already calculated for these points (progressive computation)
+        existing_matrix = (ws.get("logistics") or {}).get("matrix")
+        if existing_matrix and existing_matrix.get("mode") == m:
+            cached_ids = set(existing_matrix.get("ids", []))
+            if set(ids).issubset(cached_ids):
+                all_ids = existing_matrix["ids"]
+                o = 0
+                summary = {all_ids[j]: existing_matrix["minutes"][o][j] for j in range(len(all_ids)) if j != o and all_ids[j] in ids}
+                return {"ok": True, "mode": m, "source": existing_matrix.get("source", "cached"), "minutes_from_start": summary, "cached": True}
+
         base_ids, points = [], []
         for ref in ("origin", "hotel", "destination"):
             p = _point(ws, ref)
@@ -130,6 +152,8 @@ def build_tools(ws: Workspace, review: bool = False) -> list:
             ws.add_candidate({"id": h["id"], "name": h["name"], "category": "hotel", "kind": "hotel", "lat": h["lat"],
                               "lon": h["lon"], "est_cost": h.get("price_per_night"), "url": h.get("url"),
                               "source": h.get("source"), "source_id": h["id"], "rating": h.get("rating"),
+                              "star_rating": h.get("star_rating"), "star_unverified": h.get("star_unverified", True),
+                              "verified": h.get("verified", False),
                               "price_is_estimate": h.get("price_is_estimate", False), "indoor": True})
         res["hotels"] = res.get("hotels", [])[:8]
         return res
@@ -139,8 +163,13 @@ def build_tools(ws: Workspace, review: bool = False) -> list:
         h = (ws.get("candidates") or {}).get(hotel_id)
         if not h or h.get("kind") != "hotel":
             return {"ok": False, "error": "unknown hotel id (call search_hotels first)"}
-        ws.set_logistics("hotel", {"id": h["id"], "name": h["name"], "lat": h["lat"], "lon": h["lon"],
-                                   "price_per_night": h.get("est_cost"), "url": h.get("url"), "source": h.get("source")})
+        min_stars = extract_min_star_rating(req.get("query", ""), req)
+        if min_stars and h.get("star_rating") and h.get("star_rating") < min_stars:
+            return {"ok": False, "error": f"Hotel '{h['name']}' has {h['star_rating']} stars, which violates requested minimum of {min_stars} stars"}
+        ws.set_logistics("hotel", {"id": h["id"], "name": h["name"], "lat": h.get("lat"), "lon": h.get("lon"),
+                                   "price_per_night": h.get("est_cost"), "url": h.get("url"), "source": h.get("source"),
+                                   "star_rating": h.get("star_rating"), "star_unverified": h.get("star_unverified", True),
+                                   "verified": h.get("verified", False), "price_is_estimate": h.get("price_is_estimate", False)})
         return {"ok": True, "hotel": h["name"]}
 
     def add_intercity_leg(kind: str, depart: str, arrive: str, title: str, cost: float = 0,
@@ -201,14 +230,25 @@ def fallback(state: dict, ctx: RunContext) -> tuple[dict, str]:
     allowed = (state.get("request") or {}).get("travel_modes") or ["cab"]
     mode = next((m for m in ("cab", "transit", "drive", "walk") if m in allowed), "cab")
     tools["choose_travel_mode"].func(mode, "fallback default")
+    req = state.get("request") or {}
     if state.get("mode") in ("domestic_trip", "international_trip", "business_trip"):
         w = state["window"]
         res = tools["search_hotels"].func(w["start"][:10], w["end"][:10])
-        hotels = sorted(res.get("hotels", []), key=lambda h: h.get("price_per_night") or 1e9)
+        hotels = res.get("hotels", [])
+        min_stars = extract_min_star_rating(req.get("query", ""), req)
+        if min_stars and hotels:
+            accepted, _ = filter_hotels_by_star_rating(hotels, min_stars)
+            hotels = accepted
+        hotels = sorted(hotels, key=lambda h: h.get("price_per_night") or 1e9)
         if hotels:
             tools["select_hotel"].func(hotels[0]["id"])
-    cands = sorted((c for c in (ws.get("candidates") or {}).values() if c.get("kind") != "hotel"),
-                   key=lambda c: c.get("distance_km") or 99)[:15]
-    if cands:
-        tools["prepare_travel_matrix"].func([c["id"] for c in cands])
-    return ws.updates(), f"[deterministic fallback, LLM unavailable] mode={mode}, matrix for {len(cands)} places"
+    shortlist_ids = state.get("shortlist_ids") or []
+    if shortlist_ids:
+        cands_to_matrix = [cid for cid in shortlist_ids if cid in (ws.get("candidates") or {})]
+    else:
+        cands = sorted((c for c in (ws.get("candidates") or {}).values() if c.get("kind") != "hotel"),
+                       key=lambda c: c.get("distance_km") or 99)[:8]
+        cands_to_matrix = [c["id"] for c in cands]
+    if cands_to_matrix:
+        tools["prepare_travel_matrix"].func(cands_to_matrix)
+    return ws.updates(), f"[deterministic fallback, LLM unavailable] mode={mode}, matrix for {len(cands_to_matrix)} places"

@@ -17,9 +17,20 @@ from lifeplan.tools.http import ExternalAPIError, request_json
 from lifeplan.tools.places import search_places
 from lifeplan.tools.routing import travel_time
 
+import re
+
 SERPAPI = "https://serpapi.com/search.json"
 FRANKFURTER = ("https://api.frankfurter.dev/v1/latest", "https://api.frankfurter.app/latest")
 RESTCOUNTRIES = "https://restcountries.com/v3.1/alpha/{code}"
+
+
+def _parse_star_class(val) -> Optional[int]:
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return int(val)
+    m = re.search(r"(\d+)", str(val))
+    return int(m.group(1)) if m else None
 
 
 # ------------------------------------------------------------------ currency
@@ -129,21 +140,32 @@ def search_hotels(destination: str, check_in: str, check_out: str, adults: int =
             hotels = []
             for p in (data.get("properties") or [])[:10]:
                 gps = p.get("gps_coordinates") or {}
+                star_class = _parse_star_class(p.get("hotel_class") or p.get("extracted_hotel_class"))
+                rate = (p.get("rate_per_night") or {}).get("extracted_lowest")
+                has_rate = rate is not None and float(rate) > 0
+                price_val = float(rate) if has_rate else 3000.0
+                if not has_rate:
+                    warnings.append(f"Price for hotel '{p.get('name')}' was missing in live feed; estimate used.")
                 hotels.append({
                     "id": f"serp:{p.get('property_token') or p.get('name')}",
                     "name": p.get("name"),
-                    "price_per_night": (p.get("rate_per_night") or {}).get("extracted_lowest"),
-                    "currency": currency, "rating": p.get("overall_rating"),
+                    "price_per_night": round(price_val),
+                    "currency": currency,
+                    "rating": p.get("overall_rating"),
+                    "star_rating": star_class,
+                    "star_unverified": star_class is None,
+                    "price_is_estimate": not has_rate,
+                    "verified": has_rate and star_class is not None,
                     "lat": gps.get("latitude"), "lon": gps.get("longitude"),
                     "url": p.get("link"), "source": "serpapi-google-hotels",
                 })
             hotels = [h for h in hotels if h["name"]]
             if hotels:
-                return {"ok": True, "source": "serpapi-google-hotels", "hotels": hotels}
+                return {"ok": True, "source": "serpapi-google-hotels", "hotels": hotels, "warnings": warnings}
         except ExternalAPIError as exc:
             warnings.append(str(exc))
     else:
-        warnings.append("SERPAPI_API_KEY not set: hotel prices are estimates; hotels are real OSM/Geoapify listings")
+        warnings.append("SERPAPI_API_KEY not set: hotel prices and star ratings are unverified estimates; hotels are real OSM/Geoapify listings")
 
     loc = geocode(destination)
     if not loc.get("ok"):
@@ -153,8 +175,9 @@ def search_hotels(destination: str, check_in: str, check_out: str, adults: int =
     conv = convert_currency(est_inr, "INR", currency) if currency != "INR" else {"ok": True, "amount": est_inr}
     hotels = [{
         "id": p["id"], "name": p["name"], "price_per_night": round(conv["amount"]) if conv.get("ok") else est_inr,
-        "currency": currency if conv.get("ok") else "INR", "rating": None, "lat": p["lat"], "lon": p["lon"],
-        "url": p.get("website"), "source": p["source"], "price_is_estimate": True,
+        "currency": currency if conv.get("ok") else "INR", "rating": None, "star_rating": None,
+        "star_unverified": True, "lat": p["lat"], "lon": p["lon"],
+        "url": p.get("website"), "source": p["source"], "price_is_estimate": True, "verified": False,
     } for p in found.get("places", [])]
     return {"ok": bool(hotels), "source": found.get("source") or "none", "hotels": hotels,
             "warnings": warnings + found.get("warnings", [])}

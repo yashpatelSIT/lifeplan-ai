@@ -8,6 +8,7 @@ from datetime import datetime
 import fakes
 from lifeplan import llm, service
 from lifeplan.config import get_settings
+from lifeplan.memory import SAMPLE_CALENDAR
 from lifeplan.schemas import BusyBlock, PlanRequest, ReplanEvent
 from lifeplan.trace import Trace, to_markdown
 
@@ -17,7 +18,8 @@ NOW = datetime(2026, 10, 14, 16, 45)  # a Wednesday: CA3 team meeting 17:30–19
 def evening_request(**kw) -> PlanRequest:
     data = dict(query="Plan my evening: something fun, then dinner. Budget 1500.", mode="evening",
                 location="Shivajinagar, Pune", interests=["food", "comedy", "museum"],
-                budget={"amount": 1500, "currency": "INR"}, now=NOW)
+                budget={"amount": 1500, "currency": "INR"}, now=NOW,
+                calendar_ics=SAMPLE_CALENDAR.read_text(encoding="utf-8"))
     data.update(kw)
     return PlanRequest(**data)
 

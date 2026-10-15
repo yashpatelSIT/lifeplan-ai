@@ -153,6 +153,114 @@ def check_venues(plan: dict, registry: dict[str, dict], wet_hours: set[str]) -> 
     return issues
 
 
+def check_intercity_and_deadlines(plan: dict, state: dict) -> list[dict]:
+    """Verify that intercity trips have both outbound and return travel legs and respect return deadlines."""
+    issues = []
+    mode = state.get("mode")
+    origin = state.get("origin") or {}
+    dest = state.get("destination") or {}
+
+    origin_city = (origin.get("city") or origin.get("name") or "").strip().lower()
+    dest_city = (dest.get("city") or dest.get("name") or "").strip().lower()
+
+    is_intercity = (
+        mode in ("domestic_trip", "international_trip", "business_trip")
+        or (origin_city and dest_city and origin_city != dest_city)
+    )
+    if not is_intercity or not origin_city or not dest_city:
+        return issues
+
+    w = state.get("window") or {}
+    w_start = parse_dt(w["start"]) if w.get("start") else None
+    w_end = parse_dt(w["end"]) if w.get("end") else None
+
+    all_items = [it for d in plan.get("days", []) for it in d.get("items", [])]
+    travel_legs = [it for it in all_items if it.get("kind") in ("flight", "train", "travel")]
+
+    # Check for outbound travel (on first day or within 36h of start)
+    has_outbound = any(
+        w_start and parse_dt(it["start"]) <= w_start + timedelta(hours=36)
+        and ("to " in it.get("title", "").lower() or dest_city in it.get("title", "").lower() or "outbound" in it.get("title", "").lower() or "intercity" in it.get("title", "").lower())
+        for it in travel_legs
+    )
+
+    # Check for return travel (on last day or within 36h of end)
+    has_return = any(
+        w_end and parse_dt(it["end"]) >= w_end - timedelta(hours=36)
+        and ("return" in it.get("title", "").lower() or origin_city in it.get("title", "").lower() or ("to " + origin_city) in it.get("title", "").lower())
+        for it in travel_legs
+    )
+
+    o_name = origin.get("name") or origin_city.capitalize()
+    d_name = dest.get("name") or dest_city.capitalize()
+
+    if not has_outbound:
+        issues.append({
+            "type": "MISSING_INTERCITY_TRAVEL",
+            "severity": HIGH,
+            "agent": "logistics",
+            "message": f"Trip between {o_name} and {d_name} is missing an outbound travel leg from {o_name} to {d_name}.",
+        })
+
+    if not has_return:
+        issues.append({
+            "type": "MISSING_INTERCITY_TRAVEL",
+            "severity": HIGH,
+            "agent": "logistics",
+            "message": f"Trip between {o_name} and {d_name} is missing a return travel leg back to {o_name}.",
+        })
+
+    from lifeplan.tools.decision_engine import validate_return_deadline
+    issues += validate_return_deadline(plan, w, origin, dest)
+
+    return issues
+
+
+def check_hotel_requirements(plan: dict, state: dict) -> list[dict]:
+    """Verify that selected accommodation meets any user-specified star rating constraints."""
+    issues = []
+    from lifeplan.tools.decision_engine import extract_min_star_rating
+
+    req = state.get("request") or {}
+    query = req.get("query", "")
+    min_stars = extract_min_star_rating(query, req)
+    if not min_stars:
+        return issues
+
+    hotel = (state.get("logistics") or {}).get("hotel")
+    if not hotel:
+        for d in plan.get("days", []):
+            for it in d.get("items", []):
+                if it.get("kind") == "hotel":
+                    cand_id = it.get("candidate_id")
+                    hotel = (state.get("candidates") or {}).get(cand_id)
+                    if hotel:
+                        break
+
+    if not hotel:
+        return issues
+
+    hotel_name = hotel.get("name", "Hotel")
+    stars = hotel.get("star_rating")
+
+    if stars is not None and stars < min_stars:
+        issues.append({
+            "type": "HOTEL_STAR_VIOLATION",
+            "severity": HIGH,
+            "agent": "discovery",
+            "message": f"Hotel '{hotel_name}' has {stars} stars, which strictly violates your {min_stars}-star minimum requirement.",
+        })
+    elif stars is None or hotel.get("star_unverified"):
+        issues.append({
+            "type": "HOTEL_STAR_UNVERIFIED",
+            "severity": LOW,
+            "agent": "discovery",
+            "message": f"Selected hotel '{hotel_name}' star rating could not be verified by live data; please verify before booking.",
+        })
+
+    return issues
+
+
 def summarise(issues: list[dict]) -> dict:
     high = [i for i in issues if i["severity"] == HIGH]
     return {"ok": not high, "high": len(high), "medium": sum(1 for i in issues if i["severity"] == MEDIUM),

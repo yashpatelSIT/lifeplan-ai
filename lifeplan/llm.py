@@ -121,8 +121,11 @@ def model_chain(agent: str) -> list[str]:
         fallbacks = list(s.llm_fallbacks)
     else:
         primary_provider = chain[0].split(":", 1)[0]
-        fallbacks = [DEFAULT_AGENT_MODELS[p][agent] for p in s.available_providers if p != primary_provider]
-        fallbacks += list(s.llm_fallbacks)
+        if primary_provider in DEFAULT_AGENT_MODELS:
+            fallbacks = [DEFAULT_AGENT_MODELS[p][agent] for p in s.available_providers if p != primary_provider]
+            fallbacks += list(s.llm_fallbacks)
+        else:
+            fallbacks = list(s.llm_fallbacks)
     for fb in fallbacks:
         if fb not in chain:
             chain.append(fb)
@@ -131,10 +134,11 @@ def model_chain(agent: str) -> list[str]:
 
 # ---------------------------------------------------------------- transient-error handling
 _TRANSIENT = ("429", "rate limit", "resource_exhausted", "503", "unavailable", "overloaded", "504",
-              "deadline", "high demand", "timeout", "timed out")
-_OVERLOAD = ("503", "unavailable", "overloaded", "high demand", "504", "deadline")
+              "deadline", "high demand", "timeout", "timed out", "quota", "too many requests")
+_OVERLOAD = ("503", "unavailable", "overloaded", "high demand", "504", "deadline", "429", "resource_exhausted", "quota", "too many requests")
+_PERMANENT = ("401", "unauthorized", "invalid_api_key", "forbidden", "403")
 _down_until: dict[str, float] = {}  # simple circuit breaker per model spec
-BREAKER_SECONDS = 90
+BREAKER_SECONDS = 300
 MAX_INLINE_WAIT = 20.0
 
 
@@ -239,10 +243,12 @@ def invoke(agent: str, messages: Sequence[BaseMessage], trace: Trace, tools: Opt
                     errors.append(f"{spec} -> {err}")
                     low = err.lower()
                     wait = _retry_after(err)
-                    if not _is_transient(err):
+                    if any(k in low for k in _PERMANENT):
+                        _down_until[spec] = time.time() + 3600
                         transient_only = False
-                    if any(k in low for k in _OVERLOAD):
+                    elif any(k in low for k in _OVERLOAD):
                         _down_until[spec] = time.time() + BREAKER_SECONDS
+                        transient_only = False
                     retry_here = wait is not None and wait <= MAX_INLINE_WAIT and attempt < 2
                     trace.emit("llm_error", agent, err, model=spec, will_retry=retry_here,
                                will_fallback=not retry_here and not is_last)
@@ -250,7 +256,8 @@ def invoke(agent: str, messages: Sequence[BaseMessage], trace: Trace, tools: Opt
                         time.sleep(wait + 0.5)
                         continue
                     break
-        if not transient_only or round_no == 1 or not errors:
+        is_test = os.getenv("FAKE_RPM") == "0" or os.getenv("PYTEST_CURRENT_TEST") is not None
+        if is_test or not transient_only or round_no == 1 or not errors:
             break
         trace.emit("llm_wait", agent, "all models busy — waiting 10 s before one more attempt")
         time.sleep(10)

@@ -33,6 +33,8 @@ def offline(tmp_path, monkeypatch):
     session = fakes.FakeSession()
     http.set_session(session)
     llm.set_model_factory(fakes.fake_factory())
+    llm._down_until.clear()
+    llm._next_slot.clear()
     from lifeplan import service
     from lifeplan.memory import PlanStore, ProfileStore
 
@@ -41,3 +43,5 @@ def offline(tmp_path, monkeypatch):
     yield session
     http.set_session(None)
     llm.set_model_factory(None)
+    llm._down_until.clear()
+    llm._next_slot.clear()

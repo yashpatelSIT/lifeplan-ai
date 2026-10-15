@@ -71,6 +71,9 @@ class Settings:
     osm_contact: str = "lifeplan-ai-student-project"
     agent_models: dict = field(default_factory=dict)
     llm_fallbacks: list = field(default_factory=list)
+    dev_mock_planning: bool = False
+    local_calendar_path: str = ""
+    calendar_feed_url: str = ""
     data_dir: Path = ROOT_DIR / "data"
     trace_dir: Path = ROOT_DIR / "traces"
 
@@ -125,6 +128,9 @@ def build_settings() -> Settings:
         s.data_dir = Path(_env("DATA_DIR"))
     if _env("TRACE_DIR"):
         s.trace_dir = Path(_env("TRACE_DIR"))
+    s.dev_mock_planning = _env("DEV_MOCK_PLANNING", "").lower() in ("true", "1", "yes")
+    s.local_calendar_path = _env("LOCAL_CALENDAR_PATH")
+    s.calendar_feed_url = _env("CALENDAR_FEED_URL") or _env("GOOGLE_CALENDAR_URL") or _env("APPLE_CALENDAR_URL")
 
     # Primary provider = PRIMARY_LLM_PROVIDER env var, or first one with a key (gemini > groq > openai).
     primary_pref = _env("PRIMARY_LLM_PROVIDER").lower()

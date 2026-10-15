@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en" data-theme="auto">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LifePlan AI — Autonomous Multi-Agent Personal Planner</title>
-  <meta name="description" content="Five autonomous AI agents collaborate in real-time to plan your free time, activities, and travel.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%236366f1'/><path d='M9 22V10h3v9h7v3z' fill='white'/><circle cx='22' cy='11' r='3.5' fill='%23f59e0b'/></svg>">
+  <title>LifePlan AI — Smart Personal Planner & Itinerary Builder</title>
+  <meta name="description" content="Plan your time, activities, and trips with an intelligent, step-by-step assistant.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%236558E8'/><path d='M9 22V10h3v9h7v3z' fill='white'/><circle cx='22' cy='11' r='3.5' fill='%230F9D8A'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -18,497 +18,851 @@
 <header class="topbar">
   <div class="brand">
     <div class="logo">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
       </svg>
     </div>
     <div>
       <div class="brand-title-wrap">
         <h1>LifePlan AI</h1>
-        <span class="badge-pill">LangGraph Multi-Agent</span>
+        <span class="badge-tag">Smart Itinerary</span>
       </div>
-      <p class="brand-sub">Five autonomous AI agents orchestrate your time, activities & travel</p>
+      <p class="brand-sub">Effortless activity & travel planning</p>
     </div>
   </div>
 
   <div class="topbar-actions">
-    <button type="button" id="btn-about" class="btn-topbar" title="Understand how the 5 agents collaborate">
-      <span class="icon">📘</span> How It Works
+    <!-- Dev Mock Mode Toggle -->
+    <label class="mock-mode-toggle" title="Toggle Demonstration Mock Mode (tests UI with zero external API calls)">
+      <input type="checkbox" id="toggle-mock">
+      <span class="toggle-track"></span>
+      <span class="toggle-label">🧪 Mock Mode</span>
+    </label>
+
+    <button type="button" id="btn-about" class="btn-topbar" title="About the planning system">
+      <span>📘</span> How It Works
     </button>
-    <button type="button" id="btn-theme" class="btn-topbar icon-only" title="Toggle dark / light mode">
+    <button type="button" id="btn-theme" class="btn-topbar icon-only" title="Toggle theme">
       <span id="theme-icon">🌙</span>
     </button>
     <div id="health" class="health"></div>
   </div>
 </header>
 
-<!-- ============================================================ MAIN LAYOUT -->
-<main class="layout">
-  
-  <!-- ---------------------------------------------------------- LEFT COLUMN: INPUT -->
-  <section class="card form-card">
-    <div class="card-head">
-      <div>
-        <h2>Create a Plan</h2>
-        <p class="card-sub">Choose a scenario or describe what you want in plain words</p>
+<!-- ============================================================ MAIN CONTAINER -->
+<main class="main-container">
+
+  <!-- ========================================================== WIZARD CARD (Steps 1 to 4) -->
+  <section id="wizard-card" class="wizard-card">
+    
+    <!-- Stepper Navigation Header -->
+    <div class="wizard-stepper">
+      <div class="step-indicator active" data-step="1">
+        <span class="step-num">1</span>
+        <span class="step-title">Describe</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="step-indicator" data-step="2">
+        <span class="step-num">2</span>
+        <span class="step-title">Preferences</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="step-indicator" data-step="3">
+        <span class="step-num">3</span>
+        <span class="step-title">Commitments</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="step-indicator" data-step="4">
+        <span class="step-num">4</span>
+        <span class="step-title">Review</span>
       </div>
     </div>
 
-    <!-- Quick Preset Cards -->
-    <div class="preset-section">
-      <div class="preset-title">
-        <span>⚡ Quick Demo Scenarios</span>
-        <span class="preset-hint">1-click presets</span>
-      </div>
-      <div id="preset-cards" class="preset-grid">
-        <!-- populated dynamically from /api/samples with fallback cards -->
-      </div>
-      <div id="samples" class="chips samples hidden"></div>
-    </div>
+    <!-- Hidden samples container for backward compatibility -->
+    <div id="samples" class="hidden"></div>
 
-    <form id="plan-form" autocomplete="off">
-      <div class="form-group full">
-        <label for="query">
-          Your Request
-          <span class="req-star">*</span>
-          <span class="label-hint">What do you want to do?</span>
-        </label>
-        <textarea id="query" rows="3" required minlength="3"
-          placeholder="e.g. Free after my meeting tonight — want live comedy and a good dinner under ₹1500"></textarea>
-      </div>
+    <form id="plan-form" autocomplete="off" onsubmit="return false;">
+      
+      <!-- -------------------------------------------------------- STEP 1: DESCRIBE -->
+      <div id="step-1" class="wizard-step-pane active">
+        <div class="step-intro">
+          <h2>What would you like to do?</h2>
+          <p class="text-secondary">Describe your plan in plain words. Any dates, times, or places you mention will take priority.</p>
+        </div>
 
-      <div class="form-group">
-        <label for="mode">Plan Type</label>
-        <select id="mode">
-          <option value="auto">🪄 Auto-detect from query</option>
-          <option value="now">⚡ What can I do right now?</option>
-          <option value="free_time">⏳ A few free hours</option>
-          <option value="evening">🌆 Evening outing</option>
-          <option value="day">☀️ Full day itinerary</option>
-          <option value="weekend">🏖️ Weekend getaway</option>
-          <option value="local_outing">🎯 Local outing</option>
-          <option value="explore">🧭 Explore near me</option>
-          <option value="domestic_trip">🚗 Domestic trip</option>
-          <option value="international_trip">✈️ International vacation</option>
-          <option value="business_trip">💼 Business trip</option>
-        </select>
-      </div>
+        <!-- Quick Idea Suggestions -->
+        <div class="suggestions-wrap">
+          <span class="suggestions-label">Ideas to get you started:</span>
+          <div class="suggestions-chips">
+            <button type="button" class="sugg-chip" data-query="Tomorrow, I am free from 3 PM to 6 PM. I'd like to meet a childhood friend for non-vegetarian food in Pune.">
+              🤝 Meet a friend
+            </button>
+            <button type="button" class="sugg-chip" data-query="I have 2 free hours right now. Find a cozy cafe with outdoor seating and a peaceful vibe nearby.">
+              ⚡ Do something right now
+            </button>
+            <button type="button" class="sugg-chip" data-query="Tonight from 7 PM to 10:30 PM: plan a romantic dinner date followed by a live acoustic or comedy show.">
+              🍷 Plan a date
+            </button>
+            <button type="button" class="sugg-chip" data-query="Full day outing this Saturday: explore heritage sights, enjoy authentic local street food, and visit an art museum.">
+              ☀️ Plan a day out
+            </button>
+            <button type="button" class="sugg-chip" data-query="Weekend getaway: 2 days of relaxing beach walks, fresh seafood dining, and scenic sunset viewpoints.">
+              🏖️ Weekend getaway
+            </button>
+          </div>
+        </div>
 
-      <div class="form-group">
-        <label for="location">
-          Starting Location
-          <span class="req-star">*</span>
-        </label>
-        <div class="input-with-button">
-          <input id="location" value="Shivajinagar, Pune" required placeholder="City or area">
-          <button type="button" id="geo-btn" class="input-action-btn" title="Use current GPS location">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <circle cx="12" cy="12" r="3"></circle>
-              <line x1="12" y1="2" x2="12" y2="5"></line>
-              <line x1="12" y1="19" x2="12" y2="22"></line>
-              <line x1="2" y1="12" x2="5" y2="12"></line>
-              <line x1="19" y1="12" x2="22" y2="12"></line>
-            </svg>
+        <div class="form-field full">
+          <label for="query" class="field-label">
+            Your Request <span class="req">*</span>
+          </label>
+          <textarea id="query" rows="4" class="main-textarea" required minlength="3"
+            placeholder="e.g. Tomorrow, I am free from 3 PM to 6 PM. I'd like to meet a childhood friend for non-vegetarian food in Pune."></textarea>
+          <span class="field-help">Tip: You can specify times like "from 3 PM to 6 PM" or "tomorrow evening".</span>
+        </div>
+
+        <!-- Date & Time Row -->
+        <div class="datetime-grid">
+          <div class="form-field">
+            <label for="start" class="field-label">Start Date & Time (Optional)</label>
+            <input id="start" type="datetime-local" class="field-input">
+            <span class="field-help">If omitted, we'll extract it from your request or start soon.</span>
+          </div>
+          <div class="form-field">
+            <label for="end" class="field-label">End Date & Time (Optional)</label>
+            <input id="end" type="datetime-local" class="field-input">
+            <span class="field-help">If omitted, we'll fit a comfortable 3-hour window.</span>
+          </div>
+        </div>
+
+        <div class="wizard-actions">
+          <div></div>
+          <button type="button" id="btn-step1-next" class="btn-primary">
+            Next: Location & Preferences →
           </button>
         </div>
       </div>
 
-      <div id="dest-wrap" class="form-group full hidden">
-        <label for="destination">Destination (for trips)</label>
-        <input id="destination" placeholder="e.g. Goa, Jaipur, Tokyo, Bengaluru">
-      </div>
-
-      <div class="form-group">
-        <label for="start">Start Date & Time</label>
-        <input id="start" type="datetime-local">
-      </div>
-
-      <div class="form-group">
-        <label for="end">End Date & Time</label>
-        <input id="end" type="datetime-local">
-      </div>
-
-      <div class="form-group">
-        <label for="budget">Budget (optional)</label>
-        <div class="input-split">
-          <input id="budget" type="number" min="0" step="50" placeholder="1500">
-          <select id="currency" class="cur">
-            <option>INR</option>
-            <option>USD</option>
-            <option>EUR</option>
-            <option>GBP</option>
-            <option>JPY</option>
-            <option>AED</option>
-            <option>SGD</option>
-            <option>THB</option>
-          </select>
+      <!-- -------------------------------------------------------- STEP 2: LOCATION & PREFERENCES -->
+      <div id="step-2" class="wizard-step-pane hidden">
+        <div class="step-intro">
+          <h2>Choose location and preferences</h2>
+          <p class="text-secondary">Help us tailor recommendations to your budget, travel style, and tastes.</p>
         </div>
-      </div>
 
-      <div class="form-group">
-        <label for="party">Party Size</label>
-        <div class="input-stepper">
-          <input id="party" type="number" min="1" max="20" value="1">
-          <span class="stepper-label">people</span>
-        </div>
-      </div>
-
-      <div class="form-group full">
-        <label>Interests & Themes</label>
-        <div id="interests" class="chips toggle"></div>
-      </div>
-
-      <div class="form-group full">
-        <label>Preferred Travel Modes</label>
-        <div id="modes" class="chips toggle"></div>
-      </div>
-
-      <div class="form-group">
-        <label for="pace">Pace & Intensity</label>
-        <select id="pace">
-          <option value="relaxed">☕ Relaxed (more time at stops)</option>
-          <option value="balanced" selected>⚖️ Balanced (optimal mix)</option>
-          <option value="packed">🏃 Packed (maximize activities)</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="ics">Upload Calendar (.ics)</label>
-        <input id="ics" type="file" accept=".ics,text/calendar" class="file-input">
-      </div>
-
-      <div class="form-group full checkbox-group">
-        <label class="check">
-          <input id="learned" type="checkbox" checked>
-          <span>Learn routine from calendar history (protects work/commute hours)</span>
-        </label>
-      </div>
-
-      <details class="full busy-box">
-        <summary>
-          <span>📅 Add Busy / Clashing Times Manually</span>
-          <span class="summary-arrow">›</span>
-        </summary>
-        <div class="busy-inner">
-          <p class="busy-hint">Define meetings or events. The Coordinator & Profile agents will automatically detect conflicts and schedule around them.</p>
-          <div id="busy-list"></div>
-          <button type="button" id="add-busy" class="btn-subtle">+ Add Busy Block</button>
-        </div>
-      </details>
-
-      <button id="submit" class="btn-primary full" type="submit">
-        <span class="btn-icon">⚡</span>
-        <span class="btn-text">Plan It with 5 Agents</span>
-      </button>
-    </form>
-  </section>
-
-  <!-- ---------------------------------------------------------- RIGHT COLUMN: OUTPUT -->
-  <section class="card out-card">
-    
-    <!-- Multi-Agent Status Board -->
-    <div class="agents-board">
-      <div class="board-header">
-        <span class="board-title">Collaborating Agent Subgraphs</span>
-        <span class="board-status" id="board-status-text">Standby</span>
-      </div>
-      <div class="agents-bar" id="agents-bar">
-        <div class="agent" data-agent="coordinator" title="Adaptive Coordinator: Main supervisor, conflict resolution, re-planning">
-          <div class="agent-avatar">🤖</div>
-          <div class="agent-meta">
-            <span class="agent-name">Coordinator</span>
-            <span class="agent-desc">Supervisor</span>
-          </div>
-          <div class="agent-status-dot"></div>
-        </div>
-        <div class="agent" data-agent="profile" title="Profile Agent: Calendar learning, free windows, routine protection">
-          <div class="agent-avatar">🧠</div>
-          <div class="agent-meta">
-            <span class="agent-name">Profile</span>
-            <span class="agent-desc">Availability</span>
-          </div>
-          <div class="agent-status-dot"></div>
-        </div>
-        <div class="agent" data-agent="discovery" title="Discovery Agent: Real places, live weather, verified events, map IDs">
-          <div class="agent-avatar">📍</div>
-          <div class="agent-meta">
-            <span class="agent-name">Discovery</span>
-            <span class="agent-desc">Venues & Events</span>
-          </div>
-          <div class="agent-status-dot"></div>
-        </div>
-        <div class="agent" data-agent="logistics" title="Logistics Agent: Real road routing, transport times, flights & budget">
-          <div class="agent-avatar">🚗</div>
-          <div class="agent-meta">
-            <span class="agent-name">Logistics</span>
-            <span class="agent-desc">Transit & Cost</span>
-          </div>
-          <div class="agent-status-dot"></div>
-        </div>
-        <div class="agent" data-agent="planner" title="Planner Agent: Schedule solver, constraint optimization, trade-offs">
-          <div class="agent-avatar">📅</div>
-          <div class="agent-meta">
-            <span class="agent-name">Planner</span>
-            <span class="agent-desc">Optimization</span>
-          </div>
-          <div class="agent-status-dot"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Planning Stage Pipeline Tracker -->
-    <div class="pipeline-wrap" id="pipeline-wrap">
-      <div class="pipeline-step active" data-step="1">
-        <div class="step-circle">1</div>
-        <span class="step-text">Setup</span>
-      </div>
-      <div class="pipeline-divider"></div>
-      <div class="pipeline-step" data-step="2">
-        <div class="step-circle">2</div>
-        <span class="step-text">Discovery & Logistics</span>
-      </div>
-      <div class="pipeline-divider"></div>
-      <div class="pipeline-step" data-step="3">
-        <div class="step-circle">3</div>
-        <span class="step-text">Drafting Schedule</span>
-      </div>
-      <div class="pipeline-divider"></div>
-      <div class="pipeline-step" data-step="4">
-        <div class="step-circle">4</div>
-        <span class="step-text">Critique & Conflicts</span>
-      </div>
-      <div class="pipeline-divider"></div>
-      <div class="pipeline-step" data-step="5">
-        <div class="step-circle">5</div>
-        <span class="step-text">Final Plan</span>
-      </div>
-    </div>
-
-    <!-- Navigation Tabs -->
-    <nav class="tabs">
-      <button class="tab active" data-tab="live">
-        <span class="tab-icon">⚡</span> Live Stream
-      </button>
-      <button class="tab" data-tab="plan">
-        <span class="tab-icon">📋</span> Final Itinerary
-      </button>
-      <button class="tab" data-tab="map">
-        <span class="tab-icon">🗺️</span> Map & Route
-      </button>
-      <button class="tab" data-tab="trace">
-        <span class="tab-icon">🔍</span> Execution Trace
-      </button>
-    </nav>
-
-    <!-- --------------------------------- TAB 1: LIVE STREAM -->
-    <div class="tab-body" id="tab-live">
-      <div id="status-line" class="status-line">
-        Select a scenario or describe what you want, then click <b>Plan It</b>.
-      </div>
-      
-      <div class="feed-toolbar">
-        <div class="feed-filters" id="feed-filters">
-          <button type="button" class="feed-filter active" data-filter="all">All</button>
-          <button type="button" class="feed-filter" data-filter="message">Messages 💬</button>
-          <button type="button" class="feed-filter" data-filter="decision">Decisions 🎯</button>
-          <button type="button" class="feed-filter" data-filter="conflict">Conflicts ⚠️</button>
-          <button type="button" class="feed-filter" data-filter="tool">Tools 🔧</button>
-        </div>
-        <label class="check small llm-toggle">
-          <input id="show-llm" type="checkbox">
-          <span>Show raw LLM calls</span>
-        </label>
-      </div>
-
-      <div id="feed" class="feed"></div>
-    </div>
-
-    <!-- --------------------------------- TAB 2: PLAN -->
-    <div class="tab-body hidden" id="tab-plan">
-      <div id="plan-empty" class="empty">
-        <div class="empty-icon">📅</div>
-        <h3>No plan generated yet</h3>
-        <p>Pick a preset scenario on the left or enter your request and click Plan It.</p>
-      </div>
-
-      <div id="plan" class="hidden">
-        
-        <!-- Plan Header & Action Toolbar -->
-        <div class="plan-hero-card">
-          <div class="plan-hero-top">
-            <span id="plan-status" class="badge"></span>
-            <div class="plan-export-actions">
-              <button type="button" id="btn-export-ics" class="btn-action" title="Download .ics calendar file to import to Google/Apple/Outlook Calendar">
-                <span class="icon">📅</span> Add to Calendar (.ics)
-              </button>
-              <button type="button" id="btn-copy-plan" class="btn-action" title="Copy formatted itinerary to clipboard">
-                <span class="icon">📋</span> Copy Plan
-              </button>
-              <button type="button" id="btn-print-plan" class="btn-action" title="Print or save as PDF">
-                <span class="icon">🖨️</span> Print / PDF
+        <div class="fields-grid-2">
+          <!-- Location -->
+          <div class="form-field full">
+            <label for="location" class="field-label">
+              Starting Location <span class="req">*</span>
+            </label>
+            <div class="input-with-action">
+              <input id="location" value="Shivajinagar, Pune" required class="field-input" placeholder="e.g. Shivajinagar, Pune or Mumbai">
+              <button type="button" id="geo-btn" class="btn-input-action" title="Use current GPS location">
+                <span>📍 Current GPS</span>
               </button>
             </div>
           </div>
-          <h2 id="plan-summary" class="plan-summary-text"></h2>
-        </div>
 
-        <!-- Metrics Dashboard -->
-        <div id="totals" class="totals"></div>
-
-        <!-- Weather Strip -->
-        <div id="weather" class="weather-strip"></div>
-
-        <!-- Timeline Items -->
-        <div id="timeline" class="timeline-container"></div>
-
-        <!-- Conflict Resolution Details -->
-        <div id="conflicts"></div>
-
-        <!-- Warnings / Notes -->
-        <div id="warnings"></div>
-
-        <!-- Alternative Venues / Options -->
-        <div id="alternatives"></div>
-
-        <!-- Re-planning Section -->
-        <div class="replan-section">
-          <div class="replan-header">
-            <h3>🔄 Real-World Re-Planning</h3>
-            <p>Something changed? The 5 agents dynamically re-evaluate constraints and adapt your plan without restarting.</p>
-          </div>
-          <div class="replan-buttons">
-            <button type="button" class="btn-replan" data-replan="weather">🌧️ It's Raining</button>
-            <button type="button" class="btn-replan" data-replan="delay">⏰ Running 45m Late</button>
-            <button type="button" class="btn-replan" data-replan="closed">🚫 Venue Closed</button>
-            <button type="button" class="btn-replan" data-replan="schedule_change">📆 Meeting Extended</button>
-          </div>
-          <div class="replan-custom-row">
-            <select id="replan-item" class="replan-select"></select>
-            <input id="replan-text" placeholder="Custom event notes (e.g., flight delayed by 2 hours)">
-          </div>
-        </div>
-
-        <!-- User Feedback / Memory Learning -->
-        <div class="feedback-section">
-          <div class="feedback-header">
-            <h3>⭐ Profile Learning & Feedback</h3>
-            <p>Rate this plan. The Profile Agent updates its persistent memory to tailor future recommendations.</p>
-          </div>
-          <div class="feedback-row">
-            <select id="rating" class="rating-select">
-              <option value="5">⭐⭐⭐⭐⭐ Excellent (5)</option>
-              <option value="4">⭐⭐⭐⭐ Good (4)</option>
-              <option value="3">⭐⭐⭐ Neutral (3)</option>
-              <option value="2">⭐⭐ Poor (2)</option>
-              <option value="1">⭐ Bad (1)</option>
+          <!-- Trip Mode & Destination -->
+          <div class="form-field">
+            <label for="mode" class="field-label">Plan Type</label>
+            <select id="mode" class="field-input">
+              <option value="auto">🪄 Auto-detect from request</option>
+              <option value="free_time">⏳ A few free hours</option>
+              <option value="now">⚡ Right now</option>
+              <option value="evening">🌆 Evening out</option>
+              <option value="day">☀️ Full day itinerary</option>
+              <option value="weekend">🏖️ Weekend trip</option>
+              <option value="domestic_trip">🚗 Domestic vacation</option>
+              <option value="international_trip">✈️ International vacation</option>
+              <option value="business_trip">💼 Business trip</option>
             </select>
-            <input id="liked" placeholder="Liked categories (e.g. cafe, live comedy, Italian)">
-            <input id="disliked" placeholder="Disliked (e.g. crowded clubs, fast food)">
-            <button id="send-feedback" class="btn-subtle" type="button">Submit Feedback</button>
           </div>
-          <div id="feedback-out" class="feedback-result"></div>
+
+          <div id="dest-wrap" class="form-field hidden">
+            <label for="destination" class="field-label">Destination (for trips)</label>
+            <input id="destination" class="field-input" placeholder="e.g. Goa, Jaipur, Tokyo">
+          </div>
+
+          <!-- Budget -->
+          <div class="form-field">
+            <label for="budget" class="field-label">Budget (Optional)</label>
+            <div class="budget-input-split">
+              <input id="budget" type="number" min="0" step="50" placeholder="1500" class="field-input">
+              <select id="currency" class="field-input currency-select">
+                <option>INR</option>
+                <option>USD</option>
+                <option>EUR</option>
+                <option>GBP</option>
+                <option>JPY</option>
+                <option>AED</option>
+                <option>SGD</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Party Size -->
+          <div class="form-field">
+            <label for="party" class="field-label">Number of People</label>
+            <div class="party-input-wrap">
+              <input id="party" type="number" min="1" max="20" value="1" class="field-input">
+              <span class="party-suffix">people</span>
+            </div>
+          </div>
         </div>
 
+        <!-- Food & Activity Interests -->
+        <div class="form-field full mt-12">
+          <label class="field-label">Food & Activity Interests</label>
+          <div id="interests" class="chips selectable-chips"></div>
+        </div>
+
+        <!-- Transport Modes -->
+        <div class="form-field full mt-8">
+          <label class="field-label">Preferred Transport Modes</label>
+          <div id="modes" class="chips selectable-chips"></div>
+        </div>
+
+        <!-- More Preferences (Collapsible) -->
+        <details class="more-prefs-disclosure mt-12">
+          <summary>
+            <span>⚙️ More preferences (Pace, Routine learning)</span>
+            <span class="arrow">›</span>
+          </summary>
+          <div class="more-prefs-content">
+            <div class="form-field">
+              <label for="pace" class="field-label">Preferred Pace</label>
+              <select id="pace" class="field-input">
+                <option value="relaxed">☕ Relaxed (extra time at each spot)</option>
+                <option value="balanced" selected>⚖️ Balanced (comfortable mix)</option>
+                <option value="packed">🏃 Packed (maximize activities)</option>
+              </select>
+            </div>
+            <div class="form-field checkbox-field mt-8">
+              <label class="checkbox-label">
+                <input id="learned" type="checkbox" checked>
+                <span>Protect learned work/commute hours from routine history</span>
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <div class="wizard-actions">
+          <button type="button" id="btn-step2-prev" class="btn-secondary">
+            ← Back
+          </button>
+          <button type="button" id="btn-step2-next" class="btn-primary">
+            Next: Check Schedule →
+          </button>
+        </div>
+      </div>
+
+      <!-- -------------------------------------------------------- STEP 3: MY EXISTING COMMITMENTS -->
+      <div id="step-3" class="wizard-step-pane hidden">
+        <div class="step-intro">
+          <h2>My Existing Commitments (Optional)</h2>
+          <p class="text-secondary">Tell us about meetings, classes, or appointments you have. We will ensure all activities and travel fit around them.</p>
+        </div>
+
+        <!-- Mode choice: Plan around vs Ignore (Priority 1) -->
+        <div class="commitments-mode-card">
+          <label class="commitments-mode-option">
+            <input type="radio" name="commitments_mode" value="plan_around" checked>
+            <div class="mode-text">
+              <span class="mode-title">🛡️ Plan around these commitments</span>
+              <span class="mode-sub">Keep these time blocks free and schedule all activities strictly in your open windows.</span>
+            </div>
+          </label>
+          <label class="commitments-mode-option">
+            <input type="radio" name="commitments_mode" value="ignore">
+            <div class="mode-text">
+              <span class="mode-title">⚡ Ignore commitments for this plan</span>
+              <span class="mode-sub">Treat your entire planning window as 100% open with zero calendar constraints.</span>
+            </div>
+          </label>
+        </div>
+
+        <!-- Add / Edit Commitment Card -->
+        <div class="schedule-card mt-16">
+          <div class="schedule-card-header">
+            <span class="icon">📝</span>
+            <h3 id="form-commitment-heading">Add a commitment</h3>
+          </div>
+          <p class="schedule-card-desc">Enter any scheduled event during your planning window.</p>
+          
+          <div class="commitment-inputs-grid">
+            <div class="form-field full">
+              <label for="commitment-title" class="field-label">Event or Commitment Name <span class="req">*</span></label>
+              <input id="commitment-title" class="field-input" placeholder="e.g. Project Review Meeting, Doctor's Appointment, Lecture">
+            </div>
+
+            <div class="form-field">
+              <label for="commitment-date" class="field-label">Date <span class="req">*</span></label>
+              <input id="commitment-date" type="date" class="field-input">
+            </div>
+
+            <div class="form-field">
+              <label for="commitment-start-time" class="field-label">Start Time <span class="req">*</span></label>
+              <input id="commitment-start-time" type="time" class="field-input">
+            </div>
+
+            <div class="form-field">
+              <label for="commitment-end-time" class="field-label">End Time <span class="req">*</span></label>
+              <input id="commitment-end-time" type="time" class="field-input">
+            </div>
+
+            <div class="form-field">
+              <label for="commitment-location" class="field-label">Location (Optional)</label>
+              <input id="commitment-location" class="field-input" placeholder="e.g. Campus Building B, City Clinic">
+            </div>
+
+            <div class="form-field full">
+              <label for="commitment-notes" class="field-label">Notes (Optional)</label>
+              <input id="commitment-notes" class="field-input" placeholder="e.g. In-person meeting, preparation required">
+            </div>
+          </div>
+
+          <div class="commitment-form-actions mt-12">
+            <button type="button" id="btn-save-commitment" class="btn-primary">
+              + Add Commitment
+            </button>
+            <button type="button" id="btn-cancel-edit-commitment" class="btn-secondary hidden">
+              Cancel Edit
+            </button>
+          </div>
+        </div>
+
+        <!-- Active Commitments List -->
+        <div class="commitments-section mt-16">
+          <div class="commitments-list-header">
+            <h4 class="commitments-title">Your Entered Commitments:</h4>
+            <span id="commitments-count-badge" class="badge">0 commitments</span>
+          </div>
+          <div id="commitments-list" class="commitments-list">
+            <!-- populated dynamically -->
+          </div>
+          <div id="no-commitments-msg" class="empty-commitments">
+            No commitments added. If left empty, your calendar is treated as completely free with zero constraints.
+          </div>
+        </div>
+
+        <!-- Optional custom ICS upload -->
+        <details class="more-prefs-disclosure mt-16">
+          <summary>
+            <span>📁 Import custom calendar file (.ics)</span>
+            <span class="arrow">›</span>
+          </summary>
+          <div class="more-prefs-content">
+            <p class="schedule-card-desc">Optionally choose a local .ics calendar export file from your device.</p>
+            <input id="ics" type="file" accept=".ics,text/calendar" class="file-field">
+          </div>
+        </details>
+
+        <div class="wizard-actions">
+          <button type="button" id="btn-step3-prev" class="btn-secondary">
+            ← Back
+          </button>
+          <div class="actions-right">
+            <button type="button" id="btn-step3-skip" class="btn-subtle">
+              Skip for now
+            </button>
+            <button type="button" id="btn-step3-next" class="btn-primary">
+              Next: Review Details →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- -------------------------------------------------------- STEP 4: REVIEW -->
+      <div id="step-4" class="wizard-step-pane hidden">
+        <div class="step-intro">
+          <h2>Review your details</h2>
+          <p class="text-secondary">Confirm your preferences before creating your personalized itinerary.</p>
+        </div>
+
+        <!-- Precedence Notification Callout -->
+        <div id="precedence-callout" class="precedence-callout hidden">
+          <span class="callout-icon">ℹ️</span>
+          <span id="precedence-text">Natural-language dates/times detected in your request will take priority.</span>
+        </div>
+
+        <!-- Extracted Requirements Summary Card (Priority 3) -->
+        <div id="extracted-requirements-card" class="extracted-requirements-card hidden">
+          <div class="card-top-head">
+            <div class="title-with-badge">
+              <span class="icon-lg">🔍</span>
+              <div>
+                <h3>Extracted Requirements from Your Request</h3>
+                <span class="text-secondary text-xs">Your natural-language description is the primary source of truth</span>
+              </div>
+            </div>
+            <span class="badge ok">Natural Language Verified</span>
+          </div>
+          <div id="extracted-reqs-grid" class="extracted-reqs-grid"></div>
+        </div>
+
+        <!-- Summary Review Cards -->
+        <div class="review-grid">
+          
+          <div class="review-card">
+            <div class="review-card-head">
+              <span class="review-label">Activity & Request</span>
+              <button type="button" class="btn-link" data-jump-step="1">Edit</button>
+            </div>
+            <p id="rev-query" class="review-val query-val"></p>
+          </div>
+
+          <div class="review-card">
+            <div class="review-card-head">
+              <span class="review-label">Timing & Window</span>
+              <button type="button" class="btn-link" data-jump-step="1">Edit</button>
+            </div>
+            <p id="rev-datetime" class="review-val"></p>
+          </div>
+
+          <div class="review-card">
+            <div class="review-card-head">
+              <span class="review-label">Location & Destination</span>
+              <button type="button" class="btn-link" data-jump-step="2">Edit</button>
+            </div>
+            <p id="rev-location" class="review-val"></p>
+          </div>
+
+          <div class="review-card">
+            <div class="review-card-head">
+              <span class="review-label">Budget & Group</span>
+              <button type="button" class="btn-link" data-jump-step="2">Edit</button>
+            </div>
+            <p id="rev-budget" class="review-val"></p>
+          </div>
+
+          <div class="review-card full">
+            <div class="review-card-head">
+              <span class="review-label">Preferences & Transport</span>
+              <button type="button" class="btn-link" data-jump-step="2">Edit</button>
+            </div>
+            <p id="rev-prefs" class="review-val"></p>
+          </div>
+
+          <div class="review-card full">
+            <div class="review-card-head">
+              <span class="review-label">Existing Commitments</span>
+              <button type="button" class="btn-link" data-jump-step="3">Edit</button>
+            </div>
+            <p id="rev-commitments" class="review-val"></p>
+          </div>
+
+        </div>
+
+        <div class="wizard-actions">
+          <button type="button" id="btn-step4-prev" class="btn-secondary">
+            ← Back
+          </button>
+          <button type="submit" id="submit" class="btn-primary create-btn">
+            <span class="btn-icon">✨</span>
+            <span class="btn-text">Create My Itinerary</span>
+          </button>
+        </div>
+      </div>
+
+    </form>
+  </section>
+
+  <!-- ========================================================== STEP 5: ITINERARY RESULTS -->
+  <section id="results-view" class="results-view hidden">
+    
+    <!-- Hero / Status Banner -->
+    <div class="itinerary-hero-card">
+      <div class="hero-top-row">
+        <span id="plan-status" class="badge"></span>
+        <div class="itinerary-actions">
+          <button type="button" id="btn-edit-plan" class="btn-itinerary-action" title="Modify your request">
+            <span>✏️ Edit Plan</span>
+          </button>
+          <button type="button" id="btn-new-plan" class="btn-itinerary-action" title="Start a fresh plan">
+            <span>➕ New Plan</span>
+          </button>
+          <button type="button" id="btn-export-ics" class="btn-itinerary-action" title="Export to Google/Apple Calendar">
+            <span>📅 Add to Calendar (.ics)</span>
+          </button>
+          <button type="button" id="btn-copy-plan" class="btn-itinerary-action" title="Copy text summary">
+            <span>📋 Copy</span>
+          </button>
+          <button type="button" id="btn-print-plan" class="btn-itinerary-action" title="Print itinerary or save to PDF">
+            <span>🖨️ Print / PDF</span>
+          </button>
+        </div>
+      </div>
+      <h2 id="plan-summary" class="hero-summary-title"></h2>
+    </div>
+
+    <!-- Curated Itinerary Options Tabs -->
+    <div id="itinerary-options-container" class="itinerary-options-container hidden">
+      <div class="options-header-row">
+        <span class="options-title-label">Itinerary Options:</span>
+        <div id="itinerary-options-tabs" class="itinerary-options-tabs" role="tablist">
+          <!-- Populated dynamically: Option 1, Option 2, Option 3 -->
+        </div>
       </div>
     </div>
 
-    <!-- --------------------------------- TAB 3: MAP -->
-    <div class="tab-body hidden" id="tab-map">
-      <div class="map-container">
-        <div id="map"></div>
+    <!-- Itemized Trip Cost Ledger (Priority 5) -->
+    <div id="cost-ledger-card" class="cost-ledger-card hidden">
+      <div class="cost-ledger-header">
+        <div class="cost-ledger-title-group">
+          <span class="icon-lg">📊</span>
+          <div>
+            <h3>Itemized Trip Cost Ledger</h3>
+            <span class="text-secondary text-xs">Complete, transparent accounting across accommodation, transport, dining, and activities</span>
+          </div>
+        </div>
+        <div class="cost-ledger-header-right">
+          <span id="ledger-budget-badge" class="badge ok">Within Budget</span>
+          <div class="total-cost-box">
+            <span class="total-cost-label">Total Estimated Trip Cost:</span>
+            <span id="ledger-total-cost" class="total-cost-val">₹0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cost-ledger-grid">
+        <div class="ledger-pill">
+          <span class="pill-icon">🏨</span>
+          <div class="pill-body">
+            <span class="pill-label">Accommodation</span>
+            <span id="ledger-acc" class="pill-val">₹0</span>
+          </div>
+        </div>
+        <div class="ledger-pill">
+          <span class="pill-icon">🚆</span>
+          <div class="pill-body">
+            <span class="pill-label">Intercity Travel</span>
+            <span id="ledger-intercity" class="pill-val">₹0</span>
+          </div>
+        </div>
+        <div class="ledger-pill">
+          <span class="pill-icon">🚕</span>
+          <div class="pill-body">
+            <span class="pill-label">Local Travel</span>
+            <span id="ledger-local" class="pill-val">₹0</span>
+          </div>
+        </div>
+        <div class="ledger-pill">
+          <span class="pill-icon">🍽️</span>
+          <div class="pill-body">
+            <span class="pill-label">Dining & Meals</span>
+            <span id="ledger-dining" class="pill-val">₹0</span>
+          </div>
+        </div>
+        <div class="ledger-pill">
+          <span class="pill-icon">🎯</span>
+          <div class="pill-body">
+            <span class="pill-label">Activities & Entry</span>
+            <span id="ledger-activities" class="pill-val">₹0</span>
+          </div>
+        </div>
+        <div class="ledger-pill">
+          <span class="pill-icon">🛡️</span>
+          <div class="pill-body">
+            <span class="pill-label">Contingency Buffer (5%)</span>
+            <span id="ledger-contingency" class="pill-val">₹0</span>
+          </div>
+        </div>
+        <div class="ledger-pill highlight-pill">
+          <span class="pill-icon">💰</span>
+          <div class="pill-body">
+            <span class="pill-label">Remaining Budget</span>
+            <span id="ledger-remaining" class="pill-val">₹0</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="ledger-notes" class="ledger-notes"></div>
+    </div>
+
+    <!-- Summary Metrics -->
+    <div id="totals" class="totals-grid"></div>
+
+    <!-- Weather Forecast -->
+    <div id="weather" class="weather-row"></div>
+
+    <!-- Main Itinerary Timeline & Map Split -->
+    <div class="itinerary-content-split">
+      <!-- Left: Timeline of activities -->
+      <div class="timeline-column">
+        <div class="timeline-header">
+          <div class="timeline-header-left">
+            <h3>Your Scheduled Itinerary</h3>
+            <span id="active-option-badge" class="badge badge-accent hidden">Option 1: Recommended</span>
+          </div>
+          <div class="timeline-sort-control">
+            <span class="badge ok" style="font-size: 11px;">⏱️ Strict Chronological Order</span>
+          </div>
+        </div>
+        <div id="timeline" class="timeline-items-list"></div>
+      </div>
+
+      <!-- Right: Interactive Route Map -->
+      <div class="map-column">
+        <div class="map-card">
+          <div class="map-card-head">
+            <h3>Route & Places Map</h3>
+          </div>
+          <div id="map" class="leaflet-map-frame"></div>
+        </div>
       </div>
     </div>
 
-    <!-- --------------------------------- TAB 4: TRACE -->
-    <div class="tab-body hidden" id="tab-trace">
-      <div id="trace-stats" class="totals"></div>
-      <div class="trace-info-box">
-        <h4>Genuine Multi-Agent Collaboration Evidence</h4>
-        <p>Every decision, message, tool invocation, and LLM call is recorded with millisecond timestamps and structured input/output signatures.</p>
+    <!-- Conflicts & Resolutions (if any occurred) -->
+    <div id="conflicts" class="conflicts-container"></div>
+
+    <!-- Notes & Warnings -->
+    <div id="warnings" class="warnings-container"></div>
+
+    <!-- Alternative Places -->
+    <div id="alternatives-wrapper" class="alternatives-wrapper">
+      <div class="alt-header-row">
+        <h3>Alternative Places Explored</h3>
+        <div class="alt-sort-pills" id="alt-sort-pills">
+          <button type="button" class="alt-pill-btn active" data-alt-sort="default">All</button>
+          <button type="button" class="alt-pill-btn" data-alt-sort="price">💵 Lowest Price</button>
+          <button type="button" class="alt-pill-btn" data-alt-sort="distance">📍 Closest</button>
+          <button type="button" class="alt-pill-btn" data-alt-sort="time">⚡ Shortest Travel</button>
+        </div>
       </div>
-      <div class="trace-actions">
-        <a id="dl-json" class="btn-trace disabled" download>
-          <span>📥</span> Download Trace (JSON)
-        </a>
-        <a id="dl-md" class="btn-trace disabled" download>
-          <span>📄</span> Download Transcript (Markdown)
-        </a>
-        <a class="btn-trace" href="/docs" target="_blank" rel="noopener">
-          <span>🚀</span> Interactive API Docs (Swagger)
-        </a>
+      <div id="alternatives" class="alternatives-container"></div>
+    </div>
+
+    <!-- Re-planning Section -->
+    <div class="replan-box">
+      <div class="replan-head">
+        <h3>🔄 Adapt to Real-World Changes</h3>
+        <p>Something came up? Let the system dynamically adjust without starting over.</p>
       </div>
+      <div class="replan-presets">
+        <button type="button" class="btn-replan" data-replan="weather">🌧️ It's Raining</button>
+        <button type="button" class="btn-replan" data-replan="delay">⏰ Running 45m Late</button>
+        <button type="button" class="btn-replan" data-replan="closed">🚫 Venue Closed</button>
+        <button type="button" class="btn-replan" data-replan="schedule_change">📆 Meeting Extended</button>
+      </div>
+      <div class="replan-custom-input">
+        <select id="replan-item" class="field-input replan-item-select"></select>
+        <input id="replan-text" class="field-input" placeholder="Optional details (e.g. flight delayed by 1 hour)">
+      </div>
+    </div>
+
+    <!-- Feedback & Learning -->
+    <div class="feedback-box">
+      <div class="feedback-head">
+        <h3>⭐ Rate this Plan</h3>
+        <p>Your feedback trains your local profile so future itineraries match your taste even better.</p>
+      </div>
+      <div class="feedback-inputs">
+        <select id="rating" class="field-input rating-select">
+          <option value="5">⭐⭐⭐⭐⭐ Excellent (5)</option>
+          <option value="4">⭐⭐⭐⭐ Good (4)</option>
+          <option value="3">⭐⭐⭐ Neutral (3)</option>
+          <option value="2">⭐⭐ Fair (2)</option>
+          <option value="1">⭐ Poor (1)</option>
+        </select>
+        <input id="liked" class="field-input" placeholder="What you liked (e.g. cafe, live show)">
+        <input id="disliked" class="field-input" placeholder="What you didn't like (e.g. nightlife)">
+        <button type="button" id="send-feedback" class="btn-secondary">Save Feedback</button>
+      </div>
+      <div id="feedback-out" class="feedback-status"></div>
+    </div>
+
+    <!-- ======================================================== EXPANDABLE PLANNING ACTIVITY PANEL -->
+    <div class="planning-activity-wrap">
+      <details class="planning-activity-panel" id="activity-panel">
+        <summary class="activity-summary">
+          <div class="activity-summary-title">
+            <span class="icon">⚡</span>
+            <span>How your plan was created</span>
+          </div>
+          <span class="activity-status-tag" id="panel-overall-status">Completed</span>
+          <span class="summary-toggle-arrow">›</span>
+        </summary>
+        
+        <div class="activity-content">
+          <p class="activity-intro-text">Behind the scenes, our five-agent orchestration pipeline collaborates to build and verify your schedule:</p>
+
+          <!-- 5 Workflow Stages -->
+          <div class="stages-flow" id="stages-flow">
+            
+            <div class="stage-item completed" id="stage-1">
+              <div class="stage-dot"></div>
+              <div class="stage-body">
+                <div class="stage-title-row">
+                  <span class="stage-name">1. Understanding your request</span>
+                  <span class="stage-badge">Completed</span>
+                </div>
+                <p class="stage-desc">Analyzed natural language, extracted explicit time windows, and initialized plan parameters.</p>
+              </div>
+            </div>
+
+            <div class="stage-item completed" id="stage-2">
+              <div class="stage-dot"></div>
+              <div class="stage-body">
+                <div class="stage-title-row">
+                  <span class="stage-name">2. Checking preferences & schedule</span>
+                  <span class="stage-badge">Completed</span>
+                </div>
+                <p class="stage-desc">Verified commitments, learned routines, and confirmed available free time windows.</p>
+              </div>
+            </div>
+
+            <div class="stage-item completed" id="stage-3">
+              <div class="stage-dot"></div>
+              <div class="stage-body">
+                <div class="stage-title-row">
+                  <span class="stage-name">3. Finding suitable places</span>
+                  <span class="stage-badge">Completed</span>
+                </div>
+                <p class="stage-desc">Discovered open, verified venues and checked weather forecasts for your dates.</p>
+              </div>
+            </div>
+
+            <div class="stage-item completed" id="stage-4">
+              <div class="stage-dot"></div>
+              <div class="stage-body">
+                <div class="stage-title-row">
+                  <span class="stage-name">4. Comparing travel options</span>
+                  <span class="stage-badge">Completed</span>
+                </div>
+                <p class="stage-desc">Measured road network travel times, verified feasible transit modes, and checked costs against budget.</p>
+              </div>
+            </div>
+
+            <div class="stage-item completed" id="stage-5">
+              <div class="stage-dot"></div>
+              <div class="stage-body">
+                <div class="stage-title-row">
+                  <span class="stage-name">5. Preparing & validating itinerary</span>
+                  <span class="stage-badge">Completed</span>
+                </div>
+                <p class="stage-desc">Optimized schedule sequence and resolved opening hours or transit clashes.</p>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Deep Technical Details Disclosure -->
+          <details class="tech-details-disclosure mt-16">
+            <summary>
+              <span>🔍 Technical diagnostics & execution trace</span>
+              <span class="arrow">›</span>
+            </summary>
+            <div class="tech-details-body">
+              <div id="status-line" class="status-callout"></div>
+              
+              <div class="tech-stats-row" id="trace-stats"></div>
+
+              <div class="feed-filter-bar">
+                <label class="check-small">
+                  <input id="show-llm" type="checkbox"> Show raw model payloads
+                </label>
+              </div>
+
+              <div id="feed" class="live-event-feed"></div>
+
+              <div class="trace-download-actions mt-12">
+                <a id="dl-json" class="btn-subtle" download>📥 Download Trace (JSON)</a>
+                <a id="dl-md" class="btn-subtle" download>📄 Download Transcript (Markdown)</a>
+                <a class="btn-subtle" href="/docs" target="_blank" rel="noopener">🚀 Swagger API Docs</a>
+              </div>
+            </div>
+          </details>
+
+        </div>
+      </details>
     </div>
 
   </section>
+
 </main>
 
 <!-- ============================================================ HOW IT WORKS MODAL -->
 <div id="about-modal" class="modal-overlay hidden">
   <div class="modal-card">
     <div class="modal-header">
-      <div class="modal-title-group">
-        <h2>How LifePlan AI Works</h2>
-        <span class="badge-pill">CA3 Multi-Agent Architecture</span>
-      </div>
+      <h2>How LifePlan AI Works</h2>
       <button type="button" id="btn-close-about" class="modal-close-btn">✕</button>
     </div>
-    
     <div class="modal-content">
-      <div class="arch-flow">
-        <h3>1. Hierarchical Orchestration over a Shared Blackboard</h3>
-        <p>Unlike rigid sequential pipelines, LifePlan AI is a true autonomous multi-agent system powered by <b>LangGraph</b>. The <b>Adaptive Coordinator</b> acts as the supervisor, inspecting the blackboard state after every turn to decide the next best action: delegating to a specialist, initiating a parallel critique round, or finalizing.</p>
+      <div class="modal-section">
+        <h3>Sequential, Consumer-Friendly Workflow</h3>
+        <p>LifePlan AI guides you through 4 simple steps: describing what you want to do, picking your preferences, checking your existing commitments, and creating your itinerary. You don't have to fill in every field—sensible defaults and explicit instructions work together seamlessly.</p>
       </div>
 
-      <div class="agents-breakdown">
-        <h3>2. The Five Specialist Agents</h3>
-        <div class="agent-card-grid">
-          <div class="mini-agent-card">
-            <h4>🤖 Adaptive Coordinator</h4>
-            <p>Main decision-maker. Manages supervisor routing, evaluates conflict severities, enforces guardrails, and drives adaptive re-planning.</p>
-          </div>
-          <div class="mini-agent-card">
-            <h4>🧠 Personal Profile & Routine</h4>
-            <p>Parses calendar histories (.ics / RRULE) to infer recurring routines. Computes true free windows with commute buffers and raises clashes.</p>
-          </div>
-          <div class="mini-agent-card">
-            <h4>📍 Discovery & Grounding</h4>
-            <p>Grounds places in real-world APIs (Geoapify, OpenStreetMap Overpass). Verifies live events with Tavily/SerpApi and checks Open-Meteo weather.</p>
-          </div>
-          <div class="mini-agent-card">
-            <h4>🚗 Travel & Logistics</h4>
-            <p>Calculates multi-modal travel times (OSRM road network, transit, walking), flight/hotel estimates, currency conversions, and budget limits.</p>
-          </div>
-          <div class="mini-agent-card">
-            <h4>📅 Planner & Optimization</h4>
-            <p>Schedule solver that optimizes times, routes, opening hours, and pacing. Interacts peer-to-peer with Logistics and Discovery when needed.</p>
-          </div>
-        </div>
+      <div class="modal-section">
+        <h3>Natural-Language Date & Time Precedence</h3>
+        <p>If you mention dates or times directly in your request (for example, <i>"Tomorrow from 3 PM to 6 PM"</i>), our parser prioritizes your exact words over form pickers. The system will never silently drift your activities to another time window.</p>
       </div>
 
-      <div class="arch-flow">
-        <h3>3. Parallel Review Rounds & Conflict Resolution</h3>
-        <p>Once a draft itinerary is built, Profile, Discovery, and Logistics review the schedule in <b>parallel fan-out</b> (LangGraph <code>Send</code>). If an opening hour clashes with arrival time, or travel exceeds budget, a conflict is detected. The Coordinator identifies the conflicting constraints and routes it back for an intelligent revision.</p>
-      </div>
-
-      <div class="arch-flow">
-        <h3>4. Real-World Data Grounding</h3>
-        <p>All venue locations, road network travel durations, weather conditions, and foreign exchange rates are grounded in live services: Geoapify, Open-Meteo, OpenStreetMap, Tavily, SerpApi, and Frankfurter.</p>
+      <div class="modal-section">
+        <h3>Autonomous Multi-Agent Collaboration</h3>
+        <p>Under the hood, five specialized AI agents coordinate through a shared blackboard using <b>LangGraph</b>:</p>
+        <ul class="modal-list">
+          <li><b>Coordinator:</b> Orchestrates tasks, identifies constraints, and manages revisions.</li>
+          <li><b>Profile & Routine:</b> Protects your free time and schedule commitments.</li>
+          <li><b>Discovery:</b> Finds verified venues and live events with weather safety.</li>
+          <li><b>Logistics:</b> Calculates real road-network travel times and checks budgets.</li>
+          <li><b>Planner:</b> Solves and optimizes the final day-by-day sequence.</li>
+        </ul>
       </div>
     </div>
-
     <div class="modal-footer">
-      <button type="button" id="btn-close-modal-bottom" class="btn-primary">Got it, let's plan!</button>
+      <button type="button" id="btn-close-modal-bottom" class="btn-primary">Got It</button>
     </div>
   </div>
 </div>
 
-<!-- ============================================================ TOAST CONTAINER -->
+<!-- ============================================================ CONNECT CALENDAR MODAL -->
+<div id="modal-cal-connect" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>🔗 Connect Google / Apple Calendar</h2>
+      <button type="button" id="btn-close-cal-modal" class="modal-close-btn">✕</button>
+    </div>
+    <div class="modal-content">
+      <div class="modal-section">
+        <p>Connect your calendar once, and LifePlan AI will automatically fetch your live appointments and classes on its own whenever you create a plan.</p>
+      </div>
+
+      <div class="modal-section">
+        <h3>How to get your private iCal link:</h3>
+        <ul class="modal-list">
+          <li><b>Google Calendar:</b> On your computer, open Google Calendar → Click ⚙️ <i>Settings</i> → Click your calendar on the left → Scroll to <b>Secret address in iCal format</b> → Copy the URL.</li>
+          <li><b>Apple iCloud Calendar:</b> Open iCloud / Mac Calendar → Click the share icon next to your calendar → Turn on <i>Public Calendar</i> or copy the <b>webcal://</b> subscription link.</li>
+          <li><b>Local file:</b> Alternatively, drop any <code>calendar.ics</code> file right into your project folder. LifePlan AI detects it automatically!</li>
+        </ul>
+      </div>
+
+      <div class="modal-section">
+        <label for="input-feed-url" class="field-label">Calendar Feed URL (iCal / WebCal)</label>
+        <input id="input-feed-url" class="field-input" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics or webcal://...">
+        <div id="cal-connect-feedback" class="mt-8 text-secondary" style="font-size: 12.5px;"></div>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content: space-between;">
+      <button type="button" id="btn-disconnect-cal" class="btn-subtle text-danger">Disconnect Feed</button>
+      <div style="display: flex; gap: 8px;">
+        <button type="button" id="btn-cancel-cal-modal" class="btn-secondary">Cancel</button>
+        <button type="button" id="btn-save-cal-feed" class="btn-primary">Save & Sync Calendar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ TOASTS -->
 <div id="toast-container" class="toast-container"></div>
 
-<footer class="foot">
-  <p>LifePlan AI • Multi-Agent Autonomous Systems CA3 Project • Built with LangGraph, LangChain & FastAPI</p>
-  <p class="foot-sub">Real-world data grounded via OpenStreetMap, Geoapify, Open-Meteo, Tavily, SerpApi & Frankfurter.</p>
+<!-- FOOTER -->
+<footer class="app-footer">
+  <p>LifePlan AI • Multi-Agent Personal Planner • Built with LangGraph, LangChain & FastAPI</p>
+  <p class="footer-sub">Real-world data grounded via OpenStreetMap, Geoapify, Open-Meteo, Tavily, SerpApi & Frankfurter.</p>
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
