@@ -40,7 +40,7 @@ def infer_mode(req: PlanRequest) -> str:
     if req.mode != "auto":
         return req.mode
     q = req.query.lower()
-    if req.destination or re.search(r"\b(trip|vacation|holiday|travel to|visit|tour)\b", q):
+    if req.destination or re.search(r"\b(trip|vacation|holiday|travel to|tour)\b", q):
         if re.search(r"\b(business|conference|client|office visit|work trip)\b", q):
             return "business_trip"
         return "domestic_trip"  # refined to international after geocoding
