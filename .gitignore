@@ -28,3 +28,7 @@ traces/*.json
 Thumbs.db
 .vscode/
 .idea/
+
+# Submission archives
+LifePlan_AI_Submission_Package/
+LifePlan_AI_Submission_Package.zip
