@@ -132,10 +132,13 @@
   chipGroup($("#interests"), INTERESTS, ["food", "cafe", "culture"]);
   chipGroup($("#modes"), MODES, ["walk", "transit", "cab"]);
 
-  // Trip Mode destination toggle
+  // Trip Mode handler
   $("#mode")?.addEventListener("change", () => {
     const val = $("#mode").value;
-    $("#dest-wrap")?.classList.toggle("hidden", !TRIP.includes(val));
+    const destInput = $("#destination");
+    if (TRIP.includes(val) && destInput && !destInput.value) {
+      destInput.focus();
+    }
   });
 
   // GPS Current Location
@@ -386,6 +389,43 @@
       showToast("Please write a short description of what you'd like to do.");
       return;
     }
+
+    // Auto-detect destination if mentioned in query and not already set
+    const qLower = q.toLowerCase();
+    const destInput = $("#destination");
+    const locInput = $("#location");
+
+    // Check "from X to Y"
+    const fromToMatch = q.match(/\bfrom\s+([A-Za-z\s]+?)\s+to\s+([A-Za-z\s]+?)(?:\s+(?:from|on|next|for|with|in|by|at|\.|\,)|$)/i);
+    if (fromToMatch) {
+      if (locInput && (!locInput.value || locInput.value === "Shivajinagar, Pune")) {
+        locInput.value = fromToMatch[1].trim();
+      }
+      if (destInput && !destInput.value) {
+        destInput.value = fromToMatch[2].trim();
+      }
+    } else {
+      // Check for popular travel destinations in query
+      const knownDest = ["mumbai", "goa", "delhi", "jaipur", "lonavala", "khandala", "mahabaleshwar", "agra", "udaipur", "bengaluru", "bangalore", "chennai", "kolkata", "kochi", "alibaug", "tokyo", "paris", "london", "dubai"];
+      if (destInput && !destInput.value) {
+        for (const kd of knownDest) {
+          const re = new RegExp(`\\b${kd}\\b`, "i");
+          if (re.test(qLower)) {
+            // Check if it was declared as "to <city>" or "in <city>"
+            const toMatch = new RegExp(`\\b(?:to|trip to|vacation in|visit|in)\\s+${kd}\\b`, "i");
+            if (toMatch.test(qLower) || qLower.includes(`to ${kd}`)) {
+              destInput.value = kd.charAt(0).toUpperCase() + kd.slice(1);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (destInput && destInput.value && $("#mode") && $("#mode").value === "auto") {
+      $("#mode").value = qLower.includes("weekend") ? "weekend" : "domestic_trip";
+    }
+
     goToStep(2);
   });
 
@@ -552,8 +592,10 @@
 
     // Location
     let locSummary = loc;
-    if (TRIP.includes(mode) && dest) {
-      locSummary += ` → ${dest} (${mode.replace("_", " ")})`;
+    if (dest) {
+      locSummary = `${loc} → ${dest} (Trip Destination)`;
+    } else {
+      locSummary = `${loc} (Local outing)`;
     }
     if ($("#rev-location")) $("#rev-location").textContent = locSummary;
 
@@ -607,8 +649,12 @@
     if ($("#location").dataset.lat) {
       req.coordinates = { lat: +$("#location").dataset.lat, lon: +$("#location").dataset.lon };
     }
-    if (TRIP.includes(req.mode) && $("#destination")?.value.trim()) {
-      req.destination = $("#destination").value.trim();
+    const destVal = $("#destination")?.value.trim();
+    if (destVal) {
+      req.destination = destVal;
+      if (req.mode === "auto") {
+        req.mode = "domestic_trip";
+      }
     }
     if ($("#start")?.value) req.start = $("#start").value;
     if ($("#end")?.value) req.end = $("#end").value;

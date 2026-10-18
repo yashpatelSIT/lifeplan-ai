@@ -151,38 +151,43 @@
         </div>
 
         <div class="fields-grid-2">
-          <!-- Location -->
-          <div class="form-field full">
+          <!-- Starting Location -->
+          <div class="form-field">
             <label for="location" class="field-label">
               Starting Location <span class="req">*</span>
             </label>
             <div class="input-with-action">
-              <input id="location" value="Shivajinagar, Pune" required class="field-input" placeholder="e.g. Shivajinagar, Pune or Mumbai">
+              <input id="location" value="Shivajinagar, Pune" required class="field-input" placeholder="e.g. Shivajinagar, Pune">
               <button type="button" id="geo-btn" class="btn-input-action" title="Use current GPS location">
-                <span>📍 Current GPS</span>
+                <span>📍 GPS</span>
               </button>
             </div>
+            <span class="field-help">Where your trip or day begins.</span>
           </div>
 
-          <!-- Trip Mode & Destination -->
+          <!-- Trip Destination / Place to Visit -->
+          <div id="dest-wrap" class="form-field">
+            <label for="destination" class="field-label">
+              Trip Destination / Location <span class="text-secondary text-xs">(If planning a trip)</span>
+            </label>
+            <input id="destination" class="field-input" placeholder="e.g. Mumbai, Goa, Lonavala, Jaipur">
+            <span class="field-help">Where you want to travel (leave blank for local city outings).</span>
+          </div>
+
+          <!-- Trip Mode -->
           <div class="form-field">
             <label for="mode" class="field-label">Plan Type</label>
             <select id="mode" class="field-input">
               <option value="auto">🪄 Auto-detect from request</option>
-              <option value="free_time">⏳ A few free hours</option>
-              <option value="now">⚡ Right now</option>
-              <option value="evening">🌆 Evening out</option>
-              <option value="day">☀️ Full day itinerary</option>
               <option value="weekend">🏖️ Weekend trip</option>
               <option value="domestic_trip">🚗 Domestic vacation</option>
+              <option value="day">☀️ Full day itinerary</option>
+              <option value="evening">🌆 Evening out</option>
+              <option value="free_time">⏳ A few free hours</option>
+              <option value="now">⚡ Right now</option>
               <option value="international_trip">✈️ International vacation</option>
               <option value="business_trip">💼 Business trip</option>
             </select>
-          </div>
-
-          <div id="dest-wrap" class="form-field hidden">
-            <label for="destination" class="field-label">Destination (for trips)</label>
-            <input id="destination" class="field-input" placeholder="e.g. Goa, Jaipur, Tokyo">
           </div>
 
           <!-- Budget -->

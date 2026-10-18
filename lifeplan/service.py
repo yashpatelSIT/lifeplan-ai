@@ -152,7 +152,7 @@ def prepare_state(req: PlanRequest, trace: Trace) -> dict:
     origin["id"] = "origin"
 
     mode = infer_mode(req)
-    if extracted.get("is_trip") and mode not in TRIP_MODES:
+    if (extracted.get("is_trip") or req.destination) and mode not in TRIP_MODES:
         mode = "domestic_trip"
 
     destination = None

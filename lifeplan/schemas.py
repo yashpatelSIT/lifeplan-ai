@@ -62,6 +62,7 @@ class PlanRequest(BaseModel):
     location: Optional[str] = Field(None, max_length=200, description="Where the user is / starts from")
     coordinates: Optional[Coordinates] = None
     destination: Optional[str] = Field(None, max_length=200, description="Trip destination (trips only)")
+    final_location: Optional[str] = Field(None, max_length=200, description="Where the plan ends / return destination (defaults to starting location if omitted)")
     start: Optional[datetime] = Field(None, description="Start of the planning window (local time)")
     end: Optional[datetime] = Field(None, description="End of the planning window (local time)")
     budget: Optional[Budget] = None
