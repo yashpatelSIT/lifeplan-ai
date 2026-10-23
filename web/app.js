@@ -722,7 +722,7 @@
     }
   }
 
-  function setStageStatus(stageNum, state, badgeText) {
+  function setStageStatus(stageNum, state, badgeText, descText) {
     const el = $(`#stage-${stageNum}`);
     if (!el) return;
     el.className = `stage-item ${state}`;
@@ -738,6 +738,10 @@
       } else {
         badge.style.color = "var(--text-muted)";
       }
+    }
+    if (descText) {
+      const desc = el.querySelector(".stage-desc");
+      if (desc) desc.textContent = descText;
     }
   }
 
@@ -863,24 +867,29 @@
     // Progress stage updates based on actual agent events
     if (e.type === "agent_start") {
       if (e.agent === "coordinator") {
-        setStageStatus(1, "in-progress", "In progress");
+        setStageStatus(1, "in-progress", "Analyzing request");
       } else if (e.agent === "profile") {
         setStageStatus(1, "completed", "Completed");
-        setStageStatus(2, "in-progress", "In progress");
+        setStageStatus(2, "in-progress", "Checking routine & availability");
       } else if (e.agent === "discovery") {
         setStageStatus(2, "completed", "Completed");
-        setStageStatus(3, "in-progress", "In progress");
+        setStageStatus(3, "in-progress", "Finding places & weather");
       } else if (e.agent === "logistics") {
         setStageStatus(3, "completed", "Completed");
-        setStageStatus(4, "in-progress", "In progress");
+        setStageStatus(4, "in-progress", "Comparing travel routes");
       } else if (e.agent === "planner") {
         setStageStatus(4, "completed", "Completed");
-        setStageStatus(5, "in-progress", "In progress");
+        setStageStatus(5, "in-progress", "Drafting schedule", "Combinatorial solver is arranging stops, opening hours, and budget...");
       }
     } else if (e.type === "agent_end") {
       if (e.agent === "profile") setStageStatus(2, "completed", "Completed");
       if (e.agent === "discovery") setStageStatus(3, "completed", "Completed");
       if (e.agent === "logistics") setStageStatus(4, "completed", "Completed");
+      if (e.agent === "planner") setStageStatus(5, "in-progress", "Validating plan", "Checking calendar fit, venue timings, and travel routes...");
+    } else if (e.type === "message" && d.kind === "critique") {
+      setStageStatus(5, "in-progress", `Review: ${e.agent} verified`, `Specialist agents (Profile, Discovery, Logistics) are verifying constraints...`);
+    } else if (e.type === "decision" && (d.action === "finalize" || (e.content && e.content.includes("final")))) {
+      setStageStatus(5, "in-progress", "Finalizing options", "Generating curated alternatives (Top Match, Budget-Saver, Quick Transit)...");
     }
 
     let html = "", cls = "", agent = e.agent;

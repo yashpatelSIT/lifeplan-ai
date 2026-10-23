@@ -213,7 +213,7 @@ def run(state: dict, ctx: RunContext, instruction: str, review: bool = False) ->
               f"Task from {('Coordinator (review round)' if review else 'Coordinator')}: {instruction}")
     if review:
         prompt += f"\nCurrent validation summary: {json.dumps((validate_state(state) or {}).get('high'))} high-severity issues"
-    report = run_react_agent(NAME, REVIEW if review else SYSTEM, prompt, tools, ctx, max_iterations=3 if review else 5)
+    report = run_react_agent(NAME, REVIEW if review else SYSTEM, prompt, tools, ctx, max_iterations=2 if review else 5)
     return ws.updates(), report
 
 

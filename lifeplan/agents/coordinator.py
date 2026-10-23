@@ -158,11 +158,16 @@ def sanitize(decision: dict, state: dict) -> tuple[dict, Optional[str]]:
         decision = {"action": "delegate", "agent": "planner",
                     "instruction": "Build a draft schedule from the current candidate pool and free windows.",
                     "reason": note}
-    if decision["action"] == "review" and state.get("review_round", 0) >= 2:
+    val = state.get("validation") or {}
+    has_high = bool(val.get("high"))
+    if decision["action"] == "review" and state.get("review_round", 0) >= 1 and not has_high:
+        note = "review round completed and no high issues remain — finalising"
+        decision = {"action": "finalize", "summary": "", "reason": note}
+    elif decision["action"] == "review" and state.get("review_round", 0) >= 2:
         note = "two review rounds already done — finalising"
         decision = {"action": "finalize", "summary": "", "reason": note}
-    if (decision["action"] == "delegate" and decision["agent"] == "planner" and state.get("draft")
-            and state.get("revisions", 0) >= s.max_revisions):
-        note = "revision limit reached — finalising with remaining trade-offs reported"
+    if (decision["action"] == "delegate" and decision.get("agent") == "planner" and state.get("draft")
+            and (state.get("revisions", 0) >= s.max_revisions or (not has_high and state.get("review_round", 0) >= 1))):
+        note = "revision limit reached or draft verified clean — finalising"
         decision = {"action": "finalize", "summary": "", "reason": note}
     return decision, note

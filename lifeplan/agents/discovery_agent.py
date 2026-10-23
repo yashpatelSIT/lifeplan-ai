@@ -244,7 +244,7 @@ def run(state: dict, ctx: RunContext, instruction: str, review: bool = False) ->
               f"Known categories: {sorted(CATEGORIES)}\n"
               f"Candidates already found ({len(state.get('candidates') or {})}): {json.dumps(pool) if pool else 'none'}\n\n"
               f"Task from Coordinator{' (review round)' if review else ''}: {instruction}")
-    report = run_react_agent(NAME, REVIEW if review else SYSTEM, prompt, tools, ctx, max_iterations=4 if review else 6)
+    report = run_react_agent(NAME, REVIEW if review else SYSTEM, prompt, tools, ctx, max_iterations=2 if review else 5)
     return ws.updates(), report
 
 

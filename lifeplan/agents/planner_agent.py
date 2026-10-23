@@ -227,8 +227,9 @@ def build_tools(ws: Workspace) -> list:
         ws.state["draft"] = draft
         validation = validate_state(ws.state)
         ws.set("validation", validation)
+        note = "Draft schedule created with 0 conflicts. Reply now with your final report." if validation["ok"] else None
         return {"ok": True, "plan": compact_plan(draft), "totals": totals, "unscheduled": res.unscheduled,
-                "unknown_ids_ignored": unknown[:10],
+                "unknown_ids_ignored": unknown[:10], "note": note,
                 "validation": {"ok": validation["ok"], "issues": [f"[{i['severity']}] {i['type']}: {i['message']}"
                                                                  for i in validation["issues"]][:10]}}
 
@@ -276,7 +277,7 @@ def run(state: dict, ctx: RunContext, instruction: str, review: bool = False) ->
               f"Candidate pool ({len(cands)}): {json.dumps(cands[:30])}\n"
               f"Current draft: {json.dumps(compact_plan(state.get('draft'))) if state.get('draft') else 'none'}\n\n"
               f"Task from Coordinator: {instruction}")
-    report = run_react_agent(NAME, SYSTEM, prompt, tools, ctx, max_iterations=6)
+    report = run_react_agent(NAME, SYSTEM, prompt, tools, ctx, max_iterations=4)
     return ws.updates(), report
 
 

@@ -219,7 +219,7 @@ def run(state: dict, ctx: RunContext, instruction: str, review: bool = False) ->
               f"Candidates: {json.dumps(cands) if cands else 'none yet'}\n"
               f"Current logistics: {json.dumps({k: v for k, v in (state.get('logistics') or {}).items() if k != 'matrix'}, default=str)[:800]}\n\n"
               f"Task from Coordinator{' (review round)' if review else ''}: {instruction}")
-    report = run_react_agent(NAME, REVIEW if review else SYSTEM, prompt, tools, ctx, max_iterations=3 if review else 6)
+    report = run_react_agent(NAME, REVIEW if review else SYSTEM, prompt, tools, ctx, max_iterations=2 if review else 5)
     return ws.updates(), report
 
 
