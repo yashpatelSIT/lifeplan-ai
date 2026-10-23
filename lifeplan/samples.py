@@ -49,8 +49,18 @@ def resolve_time(value: str, today: date, now: Optional[datetime] = None) -> str
 
 def resolve(obj: Any, today: date, now: Optional[datetime] = None) -> Any:
     if isinstance(obj, dict):
-        return {k: (resolve_time(v, today, now) if k in ("start", "end") and isinstance(v, str)
+        res = {k: (resolve_time(v, today, now) if k in ("start", "end") and isinstance(v, str)
                     else resolve(v, today, now)) for k, v in obj.items()}
+        if "start" in res and "end" in res and isinstance(res["start"], str) and isinstance(res["end"], str):
+            try:
+                s_dt = datetime.fromisoformat(res["start"])
+                e_dt = datetime.fromisoformat(res["end"])
+                while e_dt <= s_dt:
+                    e_dt += timedelta(days=7)
+                res["end"] = e_dt.strftime("%Y-%m-%dT%H:%M")
+            except ValueError:
+                pass
+        return res
     if isinstance(obj, list):
         return [resolve(x, today, now) for x in obj]
     return obj

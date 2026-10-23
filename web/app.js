@@ -426,10 +426,30 @@
       $("#mode").value = qLower.includes("weekend") ? "weekend" : "domestic_trip";
     }
 
+    // Auto-detect party size if mentioned in query
+    const partyInput = $("#party");
+    if (partyInput) {
+      const partyMatch = q.match(/\b(?:party of|group of|family of|for)\s+(\d+)\s*(?:people|persons|members|adults|friends)?\b/i)
+        || q.match(/\b(\d+)\s*(?:people|persons|members|adults|friends)\b/i);
+      if (partyMatch && partyMatch[1]) {
+        partyInput.value = parseInt(partyMatch[1], 10);
+      } else if (/\bcouple\b/i.test(q)) {
+        partyInput.value = 2;
+      } else if (/\bsolo\b/i.test(q)) {
+        partyInput.value = 1;
+      }
+    }
+
     goToStep(2);
   });
 
-  // Step 2 navigation
+  // Step 2 navigation & reactive party size updates
+  $("#party")?.addEventListener("input", () => {
+    updateReviewCard();
+  });
+  $("#party")?.addEventListener("change", () => {
+    updateReviewCard();
+  });
   $("#btn-step2-prev")?.addEventListener("click", () => goToStep(1));
   $("#btn-step2-next")?.addEventListener("click", () => {
     const loc = $("#location")?.value.trim();
@@ -494,12 +514,11 @@
         <span class="req-item-val">⭐ ${ext.hotel.min_stars}-star minimum</span>
       </div>`);
     }
-    if (ext.party_size) {
-      items.push(`<div class="extracted-req-item">
-        <span class="req-item-label">Party Size</span>
-        <span class="req-item-val">👥 ${ext.party_size} ${ext.party_size == 1 ? "person" : "people"}</span>
-      </div>`);
-    }
+    const activeParty = +($("#party")?.value) || ext.party_size || 1;
+    items.push(`<div class="extracted-req-item">
+      <span class="req-item-label">Party Size</span>
+      <span class="req-item-val">👥 ${activeParty} ${activeParty == 1 ? "person" : "people"}</span>
+    </div>`);
     if (ext.travel_modes && ext.travel_modes.length) {
       items.push(`<div class="extracted-req-item">
         <span class="req-item-label">Transport</span>
@@ -1073,12 +1092,14 @@
 
     const t = opt.totals || currentPlan.totals || {};
     const pct = t.budget ? Math.min(100, Math.round((t.cost / t.budget) * 100)) : null;
+    const planParty = currentPlan.request?.party_size || +($("#party")?.value) || 1;
+    const partySuffix = planParty > 1 ? ` (${planParty} people)` : "";
 
     if ($("#totals")) {
       $("#totals").innerHTML = `
         <div class="stat">
           <b>${esc(t.cost ?? 0)} ${esc(t.currency || "")}</b>
-          <span>Estimated cost${t.budget ? ` of ${esc(t.budget)} budget` : ""}</span>
+          <span>Estimated cost${partySuffix}${t.budget ? ` of ${esc(t.budget)} budget` : ""}</span>
           ${pct != null ? `<div class="budget-bar"><i style="width:${pct}%;background:${pct > 100 ? "var(--danger)" : "var(--ok)"}"></i></div>` : ""}
         </div>
         <div class="stat"><b>${esc(t.stops ?? 0)}</b><span>Scheduled Stops</span></div>

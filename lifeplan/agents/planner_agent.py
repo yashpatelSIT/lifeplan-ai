@@ -10,6 +10,7 @@ when it needs a travel time or an alternative venue, and it re-plans when critiq
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, time, timedelta
 
 from lifeplan.agents import discovery_agent, logistics_agent
@@ -164,7 +165,9 @@ def build_tools(ws: Workspace) -> list:
         hotel = log.get("hotel")
         fixed_cost = sum(float((f.get("cost") or {}).get("amount") or 0) for f in fixed)
         nights = max(0, (parse_dt(ws.get("window")["end"]).date() - parse_dt(ws.get("window")["start"]).date()).days) if trip else 0
-        hotel_cost = float((hotel or {}).get("price_per_night") or 0) * nights
+        party_size = int(req.get("party_size") or 1)
+        rooms = max(1, math.ceil(party_size / 2))
+        hotel_cost = float((hotel or {}).get("price_per_night") or 0) * nights * rooms
         res = solve(wins, chosen, tm.leg, budget=ws.get("budget"), pace=pace or req.get("pace", "balanced"),
                     must_include=must_include, wet_hours=wet, max_stops_per_window=max(1, min(max_stops_per_window, 8)),
                     spent_already=fixed_cost + hotel_cost)
@@ -179,9 +182,10 @@ def build_tools(ws: Workspace) -> list:
             if arrivals:
                 ci = max(ci, min(arrivals) + timedelta(minutes=45))
             first = ci.date().isoformat()
+            room_str = f", {rooms} rooms" if rooms > 1 else ""
             days.setdefault(first, {"date": first, "items": []})["items"].append({
                 "start": fmt(ci), "end": fmt(ci + timedelta(minutes=30)),
-                "kind": "hotel", "title": f"Check in: {hotel['name']} ({nights} night{'s' if nights > 1 else ''})",
+                "kind": "hotel", "title": f"Check in: {hotel['name']} ({nights} night{'s' if nights > 1 else ''}{room_str})",
                 "candidate_id": hotel.get("id"),
                 "place": {k: hotel.get(k) for k in ("name", "lat", "lon", "url", "source")},
                 "cost": {"amount": round(hotel_cost), "estimate": True}})

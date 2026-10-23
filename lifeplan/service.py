@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import math
 import re
 import threading
 import uuid
@@ -193,6 +194,11 @@ def prepare_state(req: PlanRequest, trace: Trace) -> dict:
     currency = (req.budget.currency if req.budget else None) or s.default_currency
     budget = float(req.budget.amount) if req.budget else None
     request = req.model_dump(mode="json")
+    if req.party_size:
+        request["party_size"] = req.party_size
+        extracted["party_size"] = req.party_size
+    elif extracted.get("party_size"):
+        request["party_size"] = extracted["party_size"]
     request["extracted_requirements"] = extracted
     if not request.get("interests"):
         request["interests"] = profile.get("interests", [])
@@ -546,8 +552,10 @@ def run_mock_plan(req: PlanRequest, trace: Trace) -> PlanResult:
     t2_start = travel_end
     t2_end = min(end, travel_end + timedelta(minutes=min(90, max(30, int(duration_total * 0.4)))))
 
+    party = int(req.party_size or 1)
+    cabs_needed = max(1, math.ceil(party / 4))
     currency = (req.budget.currency if req.budget else None) or "INR"
-    budget_amt = float(req.budget.amount) if req.budget else 1500.0
+    budget_amt = float(req.budget.amount) if req.budget else (1500.0 * party)
 
     items = [
         {
@@ -563,16 +571,16 @@ def run_mock_plan(req: PlanRequest, trace: Trace) -> PlanResult:
                 "source": "OpenStreetMap [Mock Data]",
                 "url": "https://www.openstreetmap.org",
             },
-            "cost": {"amount": min(450.0, budget_amt * 0.35), "currency": currency, "estimate": True},
-            "notes": "Cozy dining with great local cuisine. [Demonstration Item]",
+            "cost": {"amount": round(min(450.0 * party, budget_amt * 0.45)), "currency": currency, "estimate": True},
+            "notes": f"Cozy dining with great local cuisine for {party} {'person' if party == 1 else 'people'}. [Demonstration Item]",
         },
         {
             "start": fmt(t1_end),
             "end": fmt(travel_end),
             "kind": "travel",
-            "title": "Travel via cab / ride share",
+            "title": f"Travel via {'cab / ride share' if cabs_needed == 1 else f'{cabs_needed} cabs / ride share'}",
             "travel": {"mode": "cab", "minutes": int((travel_end - t1_end).total_seconds() // 60), "km": 3.8, "source": "OSRM road network [Mock Data]"},
-            "cost": {"amount": min(120.0, budget_amt * 0.12), "currency": currency, "estimate": True},
+            "cost": {"amount": round(min(120.0 * cabs_needed, budget_amt * 0.2)), "currency": currency, "estimate": True},
         },
         {
             "start": fmt(t2_start),
@@ -587,7 +595,7 @@ def run_mock_plan(req: PlanRequest, trace: Trace) -> PlanResult:
                 "source": "Geoapify [Mock Data]",
                 "url": "https://www.geoapify.com",
             },
-            "cost": {"amount": min(250.0, budget_amt * 0.25), "currency": currency, "estimate": True},
+            "cost": {"amount": round(min(250.0 * party, budget_amt * 0.35)), "currency": currency, "estimate": True},
             "notes": "Relaxed environment with cultural exhibitions. [Demonstration Item]",
         }
     ]
@@ -598,7 +606,7 @@ def run_mock_plan(req: PlanRequest, trace: Trace) -> PlanResult:
     if canonical.override_note:
         warnings.insert(0, canonical.override_note)
 
-    opt1_totals = {"cost": 820.0, "budget": budget_amt, "currency": currency, "stops": 2, "travel_minutes": 15}
+    opt1_totals = {"cost": round(sum(it.get("cost", {}).get("amount", 0) for it in items)), "budget": budget_amt, "currency": currency, "stops": 2, "travel_minutes": 15}
     opt1 = {
         "id": "opt_recommended",
         "title": "Option 1: Recommended",
@@ -633,7 +641,7 @@ def run_mock_plan(req: PlanRequest, trace: Trace) -> PlanResult:
                 "source": "OpenStreetMap [Mock Data]",
                 "url": "https://www.openstreetmap.org",
             },
-            "cost": {"amount": min(180.0, budget_amt * 0.15), "currency": currency, "estimate": True},
+            "cost": {"amount": round(min(180.0 * party, budget_amt * 0.25)), "currency": currency, "estimate": True},
             "notes": "Authentic local snacks and tea at friendly prices.",
         },
         {
@@ -649,11 +657,11 @@ def run_mock_plan(req: PlanRequest, trace: Trace) -> PlanResult:
                 "source": "OpenStreetMap [Mock Data]",
                 "url": "https://www.openstreetmap.org",
             },
-            "cost": {"amount": min(50.0, budget_amt * 0.05), "currency": currency, "estimate": True},
+            "cost": {"amount": round(min(50.0 * party, budget_amt * 0.1)), "currency": currency, "estimate": True},
             "notes": "Scenic green open spaces with nominal entry fee.",
         }
     ]
-    opt2_totals = {"cost": 230.0, "budget": budget_amt, "currency": currency, "stops": 2, "travel_minutes": 12}
+    opt2_totals = {"cost": round(sum(it.get("cost", {}).get("amount", 0) for it in items_opt2)), "budget": budget_amt, "currency": currency, "stops": 2, "travel_minutes": 12}
     opt2 = {
         "id": "opt_budget",
         "title": "Option 2: Budget-Saver",
@@ -680,7 +688,7 @@ def run_mock_plan(req: PlanRequest, trace: Trace) -> PlanResult:
                 "source": "OpenStreetMap [Mock Data]",
                 "url": "https://www.openstreetmap.org",
             },
-            "cost": {"amount": min(320.0, budget_amt * 0.25), "currency": currency, "estimate": True},
+            "cost": {"amount": round(min(320.0 * party, budget_amt * 0.3)), "currency": currency, "estimate": True},
             "notes": "Immediate proximity, delicious bites, quick service.",
         },
         {
@@ -704,11 +712,11 @@ def run_mock_plan(req: PlanRequest, trace: Trace) -> PlanResult:
                 "source": "Geoapify [Mock Data]",
                 "url": "https://www.geoapify.com",
             },
-            "cost": {"amount": min(200.0, budget_amt * 0.2), "currency": currency, "estimate": True},
+            "cost": {"amount": round(min(200.0 * party, budget_amt * 0.25)), "currency": currency, "estimate": True},
             "notes": "Just 300 meters away with engaging contemporary exhibits.",
         }
     ]
-    opt3_totals = {"cost": 520.0, "budget": budget_amt, "currency": currency, "stops": 2, "travel_minutes": 4}
+    opt3_totals = {"cost": round(sum(it.get("cost", {}).get("amount", 0) for it in items_opt3)), "budget": budget_amt, "currency": currency, "stops": 2, "travel_minutes": 4}
     opt3 = {
         "id": "opt_close",
         "title": "Option 3: Quick & Close",
@@ -723,6 +731,7 @@ def run_mock_plan(req: PlanRequest, trace: Trace) -> PlanResult:
     mock_ledger_data = compute_trip_ledger(mock_draft, mock_state)
     mock_ledger = CostLedger(**mock_ledger_data) if mock_ledger_data else None
     mock_reqs = parse_natural_language_requirements(req.query, now=now, picker_start=req.start, picker_end=req.end)
+    mock_reqs["party_size"] = party
 
     result = PlanResult(
         plan_id=plan_id,

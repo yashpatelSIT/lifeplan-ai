@@ -218,17 +218,31 @@ def extract_party_size(query: str) -> int:
     if "couple" in q_lower or "for two" in q_lower or "for 2" in q_lower:
         return 2
 
-    m = re.search(r"\b(?:for|with)\s+(\d+)\s*(?:people|persons|adults|friends|family)?\b", q_lower)
+    m_group = re.search(r"\b(?:family|party|group)\s+of\s+(\d+)\b", q_lower)
+    if m_group:
+        try:
+            return max(1, min(20, int(m_group.group(1))))
+        except ValueError:
+            pass
+
+    m_friends = re.search(r"\bwith\s+(\d+)\s*friends?\b", q_lower)
+    if m_friends:
+        try:
+            return max(1, min(20, int(m_friends.group(1)) + 1))
+        except ValueError:
+            pass
+
+    m = re.search(r"\b(?:for|with)\s+(\d+)\s*(?:people|persons|adults|members|friends|family)?\b", q_lower)
     if m:
         try:
             return max(1, min(20, int(m.group(1))))
         except ValueError:
             pass
 
-    m_fam = re.search(r"\bfamily\s+of\s+(\d+)\b", q_lower)
-    if m_fam:
+    m_direct = re.search(r"\b(\d+)\s*(?:people|persons|members|adults)\b", q_lower)
+    if m_direct:
         try:
-            return max(1, min(20, int(m_fam.group(1))))
+            return max(1, min(20, int(m_direct.group(1))))
         except ValueError:
             pass
 

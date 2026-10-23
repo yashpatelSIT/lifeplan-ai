@@ -12,8 +12,10 @@ graph state when the agent finishes, and the agent's final answer is posted as a
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import operator
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Callable, Optional, TypedDict
@@ -47,27 +49,35 @@ class Workspace:
     state: dict
     ctx: RunContext
     changed: set = field(default_factory=set)
+    _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def get(self, key: str, default=None):
-        return self.state.get(key, default)
+        with self._lock:
+            return self.state.get(key, default)
 
     def set(self, key: str, value) -> None:
-        self.state[key] = value
-        self.changed.add(key)
+        with self._lock:
+            self.state[key] = value
+            self.changed.add(key)
 
     def add_candidate(self, cand: dict) -> None:
-        cands = dict(self.state.get("candidates") or {})
-        existing = cands.get(cand["id"], {})
-        cands[cand["id"]] = {**existing, **cand}
-        self.set("candidates", cands)
+        with self._lock:
+            cands = dict(self.state.get("candidates") or {})
+            existing = cands.get(cand["id"], {})
+            cands[cand["id"]] = {**existing, **cand}
+            self.state["candidates"] = cands
+            self.changed.add("candidates")
 
     def set_logistics(self, key: str, value) -> None:
-        log = dict(self.state.get("logistics") or {})
-        log[key] = value
-        self.set("logistics", log)
+        with self._lock:
+            log = dict(self.state.get("logistics") or {})
+            log[key] = value
+            self.state["logistics"] = log
+            self.changed.add("logistics")
 
     def updates(self) -> dict:
-        return {k: self.state[k] for k in self.changed}
+        with self._lock:
+            return {k: self.state[k] for k in self.changed}
 
 
 def to_json(value: Any, limit: int = TOOL_RESULT_CHARS) -> str:
@@ -106,8 +116,11 @@ def run_react_agent(agent: str, system_prompt: str, instruction: str, tools: lis
 
     def act(state: _AgentState) -> dict:
         last = state["messages"][-1]
-        out = []
-        for call in last.tool_calls:
+        calls = last.tool_calls or []
+        if not calls:
+            return {"messages": []}
+
+        def _exec_call(call):
             tool = by_name.get(call["name"])
             t0 = time.time()
             if tool is None:
@@ -121,7 +134,13 @@ def run_react_agent(agent: str, system_prompt: str, instruction: str, tools: lis
                 except Exception as exc:  # noqa: BLE001 - a failing tool must never crash the agent
                     result, ok = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}, False
             trace.tool_call(agent, call["name"], call.get("args") or {}, result, int((time.time() - t0) * 1000), ok)
-            out.append(ToolMessage(content=to_json(result), tool_call_id=call["id"], name=call["name"]))
+            return ToolMessage(content=to_json(result), tool_call_id=call["id"], name=call["name"])
+
+        if len(calls) > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(calls), 4)) as pool:
+                out = list(pool.map(_exec_call, calls))
+        else:
+            out = [_exec_call(calls[0])]
         return {"messages": out}
 
     def route(state: _AgentState) -> str:

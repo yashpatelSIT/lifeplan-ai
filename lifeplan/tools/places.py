@@ -7,6 +7,7 @@ concern raised in the project review).
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import re
 from typing import Iterable, Optional
@@ -166,7 +167,8 @@ def _geoapify_search(lat: float, lon: float, cats: list[str], radius_m: int, lim
         raise ExternalAPIError("geoapify-places", "no GEOAPIFY_API_KEY configured")
     out = []
     errors = []
-    for cat in cats:
+
+    def _fetch_category(cat: str):
         params = {
             "categories": ",".join(CATEGORIES[cat]["geoapify"]),
             "filter": f"circle:{lon},{lat},{radius_m}",
@@ -176,10 +178,18 @@ def _geoapify_search(lat: float, lon: float, cats: list[str], radius_m: int, lim
         }
         try:
             data = request_json("geoapify-places", "GET", GEOAPIFY_PLACES, params=params, cache_ttl=3600)
-        except ExternalAPIError as exc:  # one bad category must not sink the others
+            return cat, data, None
+        except ExternalAPIError as exc:
+            return cat, None, exc
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(cats) or 1, 5)) as pool:
+        results = pool.map(_fetch_category, cats)
+
+    for cat, data, exc in results:
+        if exc:
             errors.append(exc)
             continue
-        for f in data.get("features", []):
+        for f in (data or {}).get("features", []):
             p = f.get("properties", {})
             name = p.get("name")
             if not name:

@@ -73,3 +73,17 @@ def test_api_runs_endpoint_with_mock_mode():
     assert status_resp.status_code == 200
     run_data = status_resp.json()
     assert run_data["status"] in ("queued", "running", "done")
+
+
+def test_party_size_scales_costs_and_requirements():
+    client = TestClient(app)
+    resp1 = client.post("/api/plan", json={"query": "Dinner in Pune", "location": "Pune", "party_size": 1, "dev_mock": True})
+    assert resp1.status_code == 200
+    cost1 = resp1.json()["totals"]["cost"]
+    assert resp1.json()["requirements"]["party_size"] == 1
+
+    resp4 = client.post("/api/plan", json={"query": "Dinner in Pune", "location": "Pune", "party_size": 4, "dev_mock": True})
+    assert resp4.status_code == 200
+    cost4 = resp4.json()["totals"]["cost"]
+    assert resp4.json()["requirements"]["party_size"] == 4
+    assert cost4 > cost1

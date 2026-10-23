@@ -27,11 +27,12 @@ class LLMUnavailable(RuntimeError):
 
 
 # ---------------------------------------------------------------- rate limiting
-# Free-tier quotas are per model, so calls are spaced per model spec. Override with e.g. GEMINI_RPM=30
-# (a paid key) or GEMINI_RPM=0 to disable client-side limiting.
-_DEFAULT_RPM = {"gemini": 10, "gemini-lite": 15, "groq": 30, "openai": 0}
+# Token-bucket rate limiting with burst capacity allows rapid agent execution
+# without artificial pauses on every step, while still respecting API RPM caps.
+_DEFAULT_RPM = {"gemini": 15, "gemini-lite": 25, "groq": 45, "openai": 0}
 _limit_lock = threading.Lock()
 _next_slot: dict[str, float] = {}
+_buckets: dict[str, tuple[float, float]] = {}  # spec -> (tokens, last_time)
 
 
 def _rpm_for(spec: str) -> float:
@@ -48,14 +49,21 @@ def _wait_for_slot(spec: str) -> None:
     rpm = _rpm_for(spec)
     if rpm <= 0:
         return
-    gap = 60.0 / rpm
+    rate_per_sec = rpm / 60.0
+    burst_capacity = min(5.0, max(3.0, rpm / 5.0))
+    wait_time = 0.0
     with _limit_lock:
         now = time.monotonic()
-        slot = max(now, _next_slot.get(spec, 0.0))
-        _next_slot[spec] = slot + gap
-    delay = slot - time.monotonic()
-    if delay > 0:
-        time.sleep(delay)
+        tokens, last_time = _buckets.get(spec, (burst_capacity, now))
+        elapsed = max(0.0, now - last_time)
+        tokens = min(burst_capacity, tokens + elapsed * rate_per_sec)
+        if tokens >= 1.0:
+            _buckets[spec] = (tokens - 1.0, now)
+            return
+        wait_time = (1.0 - tokens) / rate_per_sec
+        _buckets[spec] = (0.0, now + wait_time)
+    if wait_time > 0:
+        time.sleep(min(wait_time, 10.0))
 
 
 # ---------------------------------------------------------------- model factory

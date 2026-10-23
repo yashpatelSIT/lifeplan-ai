@@ -207,6 +207,7 @@ def cab_fare(km: float, minutes: float, currency: str = "INR") -> dict:
 
 
 def leg_cost(mode: str, km: float, minutes: float, currency: str = "INR", party_size: int = 1) -> dict:
+    import math
     mode = normalise_mode(mode)
     cur = currency.upper()
     if mode in ("walk", "bike"):
@@ -215,6 +216,9 @@ def leg_cost(mode: str, km: float, minutes: float, currency: str = "INR", party_
         fare = cab_fare(km, minutes, cur)
         if mode == "drive":  # own vehicle: fuel only, ~40% of a cab fare
             fare["amount"] = round(fare["amount"] * 0.4)
+        elif party_size > 4:
+            cabs = max(1, math.ceil(party_size / 4))
+            fare["amount"] = round(fare["amount"] * cabs)
         return fare
     if mode == "transit":
         return {"amount": round(TRANSIT_FARE.get(cur, 2.5) * party_size), "currency": cur, "estimate": True}
